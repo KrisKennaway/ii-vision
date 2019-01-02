@@ -1,9 +1,8 @@
 """Screen module represents Apple II video display."""
 
-from collections import defaultdict, Counter
+from collections import defaultdict
 import enum
-import functools
-from typing import Dict, Set, Iterator, Union, Tuple
+from typing import Set, Iterator, Union, Tuple
 
 import numpy as np
 
@@ -97,88 +96,11 @@ class Screen:
         # invert this
         return np.flip(np.packbits(np.flip(pixels, axis=1), axis=1), axis=1)
 
-    def update(self, frame: Frame, cycle_budget: int) -> Iterator[int]:
-        """Update to match content of frame within provided budget."""
+    def update(self, frame: Frame,
+               cycle_budget: int, fullness: float) -> Iterator[int]:
+        """Update to match content of frame within provided budget.
 
-        self.cycles = 0
-        # Target screen memory map for new frame
-        target = self._encode(frame.bitmap)
-
-        # Compute difference from current frame
-        delta = np.bitwise_xor(self.screen, target)
-        delta = np.ma.masked_array(delta, np.logical_not(delta))
-
-        for b in self.encoded_byte_stream(delta, target):
-            yield b
-            if (self.cycles >= cycle_budget and
-                    not any(o.value == b for o in Opcode)):
-                return
-
-    def index_by_bytes(self, deltas: np.array,
-                       memmap: np.array) -> Set[Tuple[int, int, int, int]]:
-        """Transform encoded screen to map of byte --> addr.
-
-        XXX
-        """
-
-        changes = set()
-        it = np.nditer(memmap, flags=['multi_index'])
-        while not it.finished:
-            y, x_byte = it.multi_index
-
-            # Skip masked values, i.e. unchanged in new frame
-            xor = deltas[y][x_byte]
-            if xor is np.ma.masked:
-                it.iternext()
-                continue
-
-            y_base = self.Y_TO_BASE_ADDR[self.page][y]
-            page = y_base >> 8
-
-            #print("y=%d -> page=%02x" % (y, page))
-            xor_weight = hamming_weight(xor)
-
-            changes.add(
-                (
-                    page, y_base - (page << 8) + x_byte,
-                    np.asscalar(it[0]), xor_weight
-                )
-            )
-            it.iternext()
-
-        return changes
-
-    def _emit(self, opcode: Union[Opcode, int]) -> int:
-        self.cycles += self.CYCLES[opcode]
-        return opcode.value if opcode in Opcode else opcode
-
-    @functools.lru_cache(None)
-    def _score(self, diff_page: bool,
-               diff_content: bool,
-               xor_weight: int) -> float:
-        """Computes score of how many pixels/cycle it would cost to emit"""
-        cycles = 0
-        if diff_page:
-            cycles += self.CYCLES[Opcode.SET_PAGE]
-        if diff_content:
-            cycles += self.CYCLES[Opcode.SET_CONTENT]
-
-        # Placeholder content since all content bytes have same cost
-        cycles += self.CYCLES[0]
-
-        cycles_per_pixel = cycles / xor_weight
-        return cycles_per_pixel
-
-    @staticmethod
-    def similarity(a1: np.array, a2: np.array) -> float:
-        """Measure bitwise % similarity between two arrays"""
-        bits_different = np.sum(np.logical_xor(a1, a2))
-
-        return 1 - (bits_different / (np.shape(a1)[0] * np.shape(a1)[1]))
-
-    def encoded_byte_stream(self, deltas: np.array,
-                            target: np.array) -> Iterator[int]:
-        """Emit encoded byte stream for rendering the image.
+        Emits encoded byte stream for rendering the image.
 
         The byte stream consists of offsets against a selected page (e.g. $20xx)
         at which to write a selected content byte.  Those selections are
@@ -201,57 +123,81 @@ class Screen:
         it optimizes the bytestream.
         """
 
-        # Construct map of byte to addr that contain it
-        changes = self.index_by_bytes(deltas, target)
+        self.cycles = 0
+        # Target screen memory map for new frame
+        target = self._encode(frame.bitmap)
 
-        ctr = Counter()
-        page = 0x20
-        content = 0x7f
+        # Compute difference from current frame
+        delta = np.bitwise_xor(self.screen, target)
+        delta = np.ma.masked_array(delta, np.logical_not(delta))
 
-        # TODO: strictly picking the highest next score might end up
-        #  thrashing around between pages/content bytes.  Maybe score over
-        #  larger runs of bytes?
-        scores = []
-        while changes:
-            if not scores:
-                scores = sorted((
-                    (
-                        self._score(page != ch[0], content != ch[2], ch[3]),
-                        ctr,
-                        ch
-                    ) for ch in changes))
+        # Estimate number of opcodes that will end up fitting in the cycle
+        # budget.
+        est_opcodes = int(cycle_budget / fullness / self.CYCLES[0])
 
-            best = scores.pop()
-            best_change = best[2]
-            changes.remove(best_change)
-            #print(best_change)
+        # Sort by highest xor weight and take the estimated number of change
+        # operations
+        changes = list(
+            sorted(self.index_changes(delta, target), reverse=True)
+        )[:est_opcodes]
 
-            (new_page, offset, new_content, xor_weight) = best_change
-            #print("Score=%f" % best[0])
+        # Heuristic: group by content byte first then page
+        data = {}
+        for ch in changes:
+            xor_weight, page, offset, content = ch
+            data.setdefault(content, {}).setdefault(page, set()).add(offset)
 
-            if new_page != page:
-                #print("changing page %02x -> %02x" % (page, new_page))
-                page = new_page
+        for content, page_offsets in data.items():
+            yield self._emit(Opcode.SET_CONTENT)
+            yield content
+            for page, offsets in page_offsets.items():
                 yield self._emit(Opcode.SET_PAGE)
                 yield page
 
-                # Invalidate scores
-                # TODO: we don't need to invalidate all of them, just those
-                #  for the old and new page
-                scores = []
+                for offset in offsets:
+                    self._write(page << 8 | offset, content)
+                    yield self._emit(offset)
 
-            if new_content != content:
-                content = new_content
-                yield self._emit(Opcode.SET_CONTENT)
-                yield content
+    def index_changes(self, deltas: np.array,
+                      memmap: np.array) -> Set[Tuple[int, int, int, int]]:
+        """Transform encoded screen to sequence of change tuples.
 
-                # Invalidate scores
-                # TODO: we don't need to invalidate all of them, just those
-                #  for the old and new content byte
-                scores = []
+        Change tuple is (xor_weight, page, offset, content)
+        """
 
-            self._write(page << 8 | offset, content)
-            yield self._emit(offset)
+        changes = set()
+        it = np.nditer(memmap, flags=['multi_index'])
+        while not it.finished:
+            y, x_byte = it.multi_index
+
+            # Skip masked values, i.e. unchanged in new frame
+            xor = deltas[y][x_byte]
+            if xor is np.ma.masked:
+                it.iternext()
+                continue
+
+            y_base = self.Y_TO_BASE_ADDR[self.page][y]
+            page = y_base >> 8
+
+            # print("y=%d -> page=%02x" % (y, page))
+            xor_weight = hamming_weight(xor)
+            offset = y_base - (page << 8) + x_byte
+
+            changes.add((xor_weight, page, offset, np.asscalar(it[0])))
+            it.iternext()
+
+        return changes
+
+    def _emit(self, opcode: Union[Opcode, int]) -> int:
+        self.cycles += self.CYCLES[opcode]
+        return opcode.value if opcode in Opcode else opcode
+
+    @staticmethod
+    def similarity(a1: np.array, a2: np.array) -> float:
+        """Measure bitwise % similarity between two arrays"""
+        bits_different = np.asscalar(np.sum(np.logical_xor(a1, a2)))
+
+        return 1 - (bits_different / (np.shape(a1)[0] * np.shape(a1)[1]))
 
     def done(self) -> Iterator[int]:
         """Terminate opcode stream."""
@@ -279,20 +225,28 @@ class Screen:
         return np.array(np.delete(bm, np.arange(0, bm.shape[1], 2), axis=1),
                         dtype=np.bool)
 
-    def from_stream(self, stream: Iterator[int]) -> None:
+    def from_stream(self, stream: Iterator[int]) -> Tuple[int, int, int]:
         """Replay an opcode stream to build a screen image."""
         page = 0x20
         content = 0x7f
+        num_content_changes = 0
+        num_page_changes = 0
+        num_content_stores = 0
         for b in stream:
             if b == Opcode.SET_CONTENT.value:
                 content = next(stream)
+                num_content_changes += 1
                 continue
             elif b == Opcode.SET_PAGE.value:
                 page = next(stream)
+                num_page_changes += 1
                 continue
             elif b == Opcode.TICK.value:
                 continue
             elif b == Opcode.END_FRAME.value:
-                return
+                break
 
+            num_content_stores += 1
             self._write(page << 8 | b, content)
+
+        return num_content_stores, num_content_changes, num_page_changes
