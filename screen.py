@@ -169,6 +169,13 @@ class Screen:
         cycles_per_pixel = cycles / xor_weight
         return cycles_per_pixel
 
+    @staticmethod
+    def similarity(a1: np.array, a2: np.array) -> float:
+        """Measure bitwise % similarity between two arrays"""
+        bits_different = np.sum(np.logical_xor(a1, a2))
+
+        return 1 - (bits_different / (np.shape(a1)[0] * np.shape(a1)[1]))
+
     def encoded_byte_stream(self, deltas: np.array,
                             target: np.array) -> Iterator[int]:
         """Emit encoded byte stream for rendering the image.
@@ -201,6 +208,9 @@ class Screen:
         page = 0x20
         content = 0x7f
 
+        # TODO: strictly picking the highest next score might end up
+        #  thrashing around between pages/content bytes.  Maybe score over
+        #  larger runs of bytes?
         scores = []
         while changes:
             if not scores:
@@ -227,7 +237,7 @@ class Screen:
 
                 # Invalidate scores
                 # TODO: we don't need to invalidate all of them, just those
-                #  for the current page
+                #  for the old and new page
                 scores = []
 
             if new_content != content:
@@ -237,7 +247,7 @@ class Screen:
 
                 # Invalidate scores
                 # TODO: we don't need to invalidate all of them, just those
-                #  for the current page
+                #  for the old and new content byte
                 scores = []
 
             self._write(page << 8 | offset, content)
