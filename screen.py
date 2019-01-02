@@ -1,8 +1,9 @@
 """Screen module represents Apple II video display."""
 
-from collections import defaultdict
+from collections import defaultdict, Counter
 import enum
-from typing import Dict, Set, Iterator, Union
+import functools
+from typing import Dict, Set, Iterator, Union, Tuple
 
 import numpy as np
 
@@ -65,10 +66,10 @@ class Screen:
                 a = Y_TO_BASE_ADDR[p][y] + x
                 ADDR_TO_COORDS[a] = (p, y, x)
 
-    CYCLES = defaultdict(lambda: 41)  # fast-path cycle count
+    CYCLES = defaultdict(lambda: 35)  # fast-path cycle count
     CYCLES.update({
         Opcode.SET_CONTENT: 62,
-        Opcode.SET_PAGE: 72,
+        Opcode.SET_PAGE: 69,
         Opcode.TICK: 50,
         Opcode.END_FRAME: 50
     })
@@ -96,12 +97,6 @@ class Screen:
         # invert this
         return np.flip(np.packbits(np.flip(pixels, axis=1), axis=1), axis=1)
 
-    # TODO: unused
-    @staticmethod
-    def bit_weights(ary: np.array) -> np.array:
-        """Map array of bytes to array of bit-weights, i.e. # of 1's set"""
-        return np.apply_along_axis(hamming_weight, 1, ary)
-
     def update(self, frame: Frame, cycle_budget: int) -> Iterator[int]:
         """Update to match content of frame within provided budget."""
 
@@ -110,37 +105,72 @@ class Screen:
         target = self._encode(frame.bitmap)
 
         # Compute difference from current frame
-        # TODO: weight by XOR but send new target byte.  This will allow
-        #  optimizing the decoder.
         delta = np.bitwise_xor(self.screen, target)
         delta = np.ma.masked_array(delta, np.logical_not(delta))
-        for b in self.encoded_byte_stream(delta):
+
+        for b in self.encoded_byte_stream(delta, target):
             yield b
             if (self.cycles >= cycle_budget and
                     not any(o.value == b for o in Opcode)):
                 return
 
-    def index_by_bytes(self, deltas: np.array) -> Dict[int, Set[int]]:
-        """Transform encoded screen to map of byte --> addr."""
+    def index_by_bytes(self, deltas: np.array,
+                       memmap: np.array) -> Set[Tuple[int, int, int, int]]:
+        """Transform encoded screen to map of byte --> addr.
 
-        byte_map = defaultdict(set)
-        it = np.nditer(deltas, flags=['multi_index'])
+        XXX
+        """
+
+        changes = set()
+        it = np.nditer(memmap, flags=['multi_index'])
         while not it.finished:
-            y, offset = it.multi_index
+            y, x_byte = it.multi_index
+
             # Skip masked values, i.e. unchanged in new frame
-            if deltas[y][offset] is np.ma.masked:
+            xor = deltas[y][x_byte]
+            if xor is np.ma.masked:
                 it.iternext()
                 continue
-            byte_map[int(it[0])].add(self.Y_TO_BASE_ADDR[self.page][y] + offset)
+
+            y_base = self.Y_TO_BASE_ADDR[self.page][y]
+            page = y_base >> 8
+
+            #print("y=%d -> page=%02x" % (y, page))
+            xor_weight = hamming_weight(xor)
+
+            changes.add(
+                (
+                    page, y_base - (page << 8) + x_byte,
+                    np.asscalar(it[0]), xor_weight
+                )
+            )
             it.iternext()
 
-        return byte_map
+        return changes
 
     def _emit(self, opcode: Union[Opcode, int]) -> int:
         self.cycles += self.CYCLES[opcode]
         return opcode.value if opcode in Opcode else opcode
 
-    def encoded_byte_stream(self, memmap: np.array) -> Iterator[int]:
+    @functools.lru_cache(None)
+    def _score(self, diff_page: bool,
+               diff_content: bool,
+               xor_weight: int) -> float:
+        """Computes score of how many pixels/cycle it would cost to emit"""
+        cycles = 0
+        if diff_page:
+            cycles += self.CYCLES[Opcode.SET_PAGE]
+        if diff_content:
+            cycles += self.CYCLES[Opcode.SET_CONTENT]
+
+        # Placeholder content since all content bytes have same cost
+        cycles += self.CYCLES[0]
+
+        cycles_per_pixel = cycles / xor_weight
+        return cycles_per_pixel
+
+    def encoded_byte_stream(self, deltas: np.array,
+                            target: np.array) -> Iterator[int]:
         """Emit encoded byte stream for rendering the image.
 
         The byte stream consists of offsets against a selected page (e.g. $20xx)
@@ -164,34 +194,54 @@ class Screen:
         it optimizes the bytestream.
         """
 
-        # TODO: is it possible to compute a more optimal encoding?  e.g this is
-        # a weighted hamiltonian graph problem where transitions to different
-        # byte/page/offset have varying costs
-
         # Construct map of byte to addr that contain it
-        byte_to_addrs = self.index_by_bytes(memmap)
+        changes = self.index_by_bytes(deltas, target)
 
-        # Sort the keys by hamming weight (highest -> lowest)
-        for b in reversed(sorted(byte_to_addrs.keys(), key=hamming_weight)):
-            yield self._emit(Opcode.SET_CONTENT)
-            yield b
-            content = b
+        ctr = Counter()
+        page = 0x20
+        content = 0x7f
 
-            # For this content byte, group by page and collect offsets
-            pages = defaultdict(set)
-            for addr in byte_to_addrs[b]:
-                page = (addr & 0xff00) >> 8
-                offset = addr & 0xff
-                assert offset < 0xfd
-                pages[page].add(offset)
+        scores = []
+        while changes:
+            if not scores:
+                scores = sorted((
+                    (
+                        self._score(page != ch[0], content != ch[2], ch[3]),
+                        ctr,
+                        ch
+                    ) for ch in changes))
 
-            for page, offsets in reversed(
-                    sorted(pages.items(), key=lambda i: len(i[1]))):
+            best = scores.pop()
+            best_change = best[2]
+            changes.remove(best_change)
+            #print(best_change)
+
+            (new_page, offset, new_content, xor_weight) = best_change
+            #print("Score=%f" % best[0])
+
+            if new_page != page:
+                #print("changing page %02x -> %02x" % (page, new_page))
+                page = new_page
                 yield self._emit(Opcode.SET_PAGE)
                 yield page
-                for o in offsets:
-                    self._write(page << 8 | o, content)
-                    yield self._emit(o)
+
+                # Invalidate scores
+                # TODO: we don't need to invalidate all of them, just those
+                #  for the current page
+                scores = []
+
+            if new_content != content:
+                content = new_content
+                yield self._emit(Opcode.SET_CONTENT)
+                yield content
+
+                # Invalidate scores
+                # TODO: we don't need to invalidate all of them, just those
+                #  for the current page
+                scores = []
+
+            self._write(page << 8 | offset, content)
+            yield self._emit(offset)
 
     def done(self) -> Iterator[int]:
         """Terminate opcode stream."""
@@ -201,7 +251,7 @@ class Screen:
     def _write(self, addr: int, val: int) -> None:
         """Updates screen image to set 0xaddr ^= val"""
         _, y, x = self.ADDR_TO_COORDS[addr]
-        self.screen[y][x] ^= val
+        self.screen[y][x] = val
 
     def to_bitmap(self) -> np.array:
         """Convert packed screen representation to bitmap."""
@@ -221,8 +271,8 @@ class Screen:
 
     def from_stream(self, stream: Iterator[int]) -> None:
         """Replay an opcode stream to build a screen image."""
-        page = None
-        content = None
+        page = 0x20
+        content = 0x7f
         for b in stream:
             if b == Opcode.SET_CONTENT.value:
                 content = next(stream)
