@@ -1,12 +1,13 @@
 """Screen module represents Apple II video display."""
 
 from collections import defaultdict
+import functools
 import enum
 from typing import Set, Iterator, Union, Tuple
 
 import numpy as np
 
-
+@functools.lru_cache(None)
 def hamming_weight(n: int) -> int:
     """Compute hamming weight of 8-bit int"""
     n = (n & 0x55) + ((n & 0xAA) >> 1)
