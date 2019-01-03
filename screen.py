@@ -3,7 +3,7 @@
 from collections import defaultdict
 import functools
 import enum
-from typing import Set, Iterator, Union, Tuple
+from typing import List, Set, Iterator, Union, Tuple
 
 from ortools.constraint_solver import pywrapcp
 from ortools.constraint_solver import routing_enums_pb2
@@ -33,8 +33,9 @@ def y_to_base_addr(y: int, page: int = 0) -> int:
 
 # TODO: fill out other byte opcodes
 class Opcode(enum.Enum):
-    SET_CONTENT = 0xfc  # set new data byte to write
-    SET_PAGE = 0xfd
+    SET_CONTENT = 0xfb  # set new data byte to write
+    SET_PAGE = 0xfc
+    RLE = 0xfd
     TICK = 0xfe  # tick speaker
     END_FRAME = 0xff
 
@@ -42,7 +43,7 @@ class Opcode(enum.Enum):
 class Frame:
     """Bitmapped screen frame."""
 
-    XMAX = 140  # double-wide pixels to not worry about colour effects
+    XMAX = 140  # 280  # double-wide pixels to not worry about colour effects
     YMAX = 192
 
     def __init__(self, bitmap: np.array = None):
@@ -70,10 +71,11 @@ class Screen:
                 a = Y_TO_BASE_ADDR[p][y] + x
                 ADDR_TO_COORDS[a] = (p, y, x)
 
-    CYCLES = defaultdict(lambda: 35)  # fast-path cycle count
+    CYCLES = defaultdict(lambda: 36)  # fast-path cycle count
     CYCLES.update({
         Opcode.SET_CONTENT: 62,
-        Opcode.SET_PAGE: 69,
+        Opcode.SET_PAGE: 73,
+        Opcode.RLE: 98,  # + 9 * N
         Opcode.TICK: 50,
         Opcode.END_FRAME: 50
     })
@@ -146,8 +148,104 @@ class Screen:
             sorted(self.index_changes(delta, target), reverse=True)
         )[:est_opcodes]
 
-        for b in self._heuristic_opcode_scheduler(changes):
+        for b in self._heuristic_page_first_opcode_scheduler(changes):
             yield b
+
+    def index_changes(self, deltas: np.array,
+                      target: np.array) -> Set[Tuple[int, int, int, int, int]]:
+        """Transform encoded screen to sequence of change tuples.
+
+        Change tuple is (xor_weight, page, offset, content)
+        """
+
+        changes = set()
+
+        # Find runs in masked image
+
+        memmap = defaultdict(lambda: [(None, None)] * 256)
+
+        it = np.nditer(target, flags=['multi_index'])
+        while not it.finished:
+            y, x_byte = it.multi_index
+
+            # Skip masked values, i.e. unchanged in new frame
+            xor = deltas[y][x_byte]
+            if xor is np.ma.masked:
+                it.iternext()
+                continue
+
+            y_base = self.Y_TO_BASE_ADDR[self.page][y]
+            page = y_base >> 8
+
+            # print("y=%d -> page=%02x" % (y, page))
+            xor_weight = hamming_weight(xor)
+            offset = y_base - (page << 8) + x_byte
+            content = np.asscalar(it[0])
+
+            memmap[page][offset] = (xor_weight, content)
+            it.iternext()
+
+        for page, offsets in memmap.items():
+            cur_content = None
+            run_length = 0
+            maybe_run = []
+            for offset, data in enumerate(offsets):
+                xor_weight, content = data
+
+                if cur_content != content and cur_content is not None:
+                    # End of run
+                    if run_length >= 4:
+                        total_xor = sum(ch[0] for ch in maybe_run)
+                        change = (total_xor, page, offset - run_length,
+                            cur_content, run_length)
+                        #print("Found run of %d * %2x at %2x:%2x" % (
+                        #    run_length, cur_content, page, offset - run_length)
+                        #      )
+                        changes.add(change)
+                    else:
+                        changes.update(ch for ch in maybe_run)
+                    maybe_run = []
+                    run_length = 0
+                    cur_content = content
+
+                if cur_content is None:
+                    cur_content = content
+
+                if content is not None:
+                    run_length += 1
+                    maybe_run.append((xor_weight, page, offset, content, 1))
+                    assert len(maybe_run) == run_length, (maybe_run, run_length)
+
+        return changes
+
+    def _heuristic_page_first_opcode_scheduler(self, changes):
+        # Heuristic: group by page first then content byte
+        data = {}
+        for ch in changes:
+            xor_weight, page, offset, content, run_length = ch
+            data.setdefault(page, {}).setdefault(content, set()).add(
+                (run_length, offset))
+
+        for page, content_offsets in data.items():
+            for b in self._emit(Opcode.SET_PAGE, page):
+                yield b
+            for content, offsets in content_offsets.items():
+                for b in self._emit(Opcode.SET_CONTENT, content):
+                    yield b
+
+                #print("page %d content %d offsets %s" % (page, content,
+                #                                         offsets))
+                for (run_length, offset) in sorted(offsets, reverse=True):
+                    if run_length > 1:
+                        #print("Offset %d run length %d" % (offset, run_length))
+                        for b in self._emit(Opcode.RLE, offset, run_length):
+                            yield b
+                        for i in range(run_length):
+                            self._write((page << 8 | offset) + i, content)
+                    else:
+                        for b in self._emit(offset):
+                            yield b
+                        self._write(page << 8 | offset, content)
 
     def _tsp_opcode_scheduler(self, changes):
         # Build distance matrix for pairs of changes based on number of
@@ -191,7 +289,8 @@ class Screen:
             # Display the solution.
             # Only one route here; otherwise iterate from 0 to routing.vehicles() - 1
             route_number = 0
-            index = routing.Start(route_number)  # Index of the variable for the starting node.
+            index = routing.Start(
+                route_number)  # Index of the variable for the starting node.
             page = 0x20
             content = 0x7f
             # TODO: I think this will end by visiting the origin node which
@@ -234,57 +333,14 @@ class Screen:
                     self._write(page << 8 | offset, content)
                     yield self._emit(offset)
 
-    def _heuristic_page_first_opcode_scheduler(self, changes):
-        # Heuristic: group by page first then content byte
-        data = {}
-        for ch in changes:
-            xor_weight, page, offset, content = ch
-            data.setdefault(page, {}).setdefault(content, set()).add(offset)
-
-        for page, content_offsets in data.items():
-            yield self._emit(Opcode.SET_PAGE)
-            yield page
-            for content, offsets in content_offsets.items():
-                yield self._emit(Opcode.SET_CONTENT)
-                yield content
-
-                for offset in offsets:
-                    self._write(page << 8 | offset, content)
-                    yield self._emit(offset)
-
-    def index_changes(self, deltas: np.array,
-                      memmap: np.array) -> Set[Tuple[int, int, int, int]]:
-        """Transform encoded screen to sequence of change tuples.
-
-        Change tuple is (xor_weight, page, offset, content)
-        """
-
-        changes = set()
-        it = np.nditer(memmap, flags=['multi_index'])
-        while not it.finished:
-            y, x_byte = it.multi_index
-
-            # Skip masked values, i.e. unchanged in new frame
-            xor = deltas[y][x_byte]
-            if xor is np.ma.masked:
-                it.iternext()
-                continue
-
-            y_base = self.Y_TO_BASE_ADDR[self.page][y]
-            page = y_base >> 8
-
-            # print("y=%d -> page=%02x" % (y, page))
-            xor_weight = hamming_weight(xor)
-            offset = y_base - (page << 8) + x_byte
-
-            changes.add((xor_weight, page, offset, np.asscalar(it[0])))
-            it.iternext()
-
-        return changes
-
-    def _emit(self, opcode: Union[Opcode, int]) -> int:
+    def _emit(self, opcode: Union[Opcode, int], *data) -> List[int]:
+        if opcode == Opcode.RLE:
+            run_length = data[1]
+            self.cycles += 9 * run_length
         self.cycles += self.CYCLES[opcode]
-        return opcode.value if opcode in Opcode else opcode
+
+        opcode_byte = opcode.value if opcode in Opcode else opcode
+        return [opcode_byte] + list(data)
 
     @staticmethod
     def similarity(a1: np.array, a2: np.array) -> float:
@@ -296,7 +352,8 @@ class Screen:
     def done(self) -> Iterator[int]:
         """Terminate opcode stream."""
 
-        yield self._emit(Opcode.END_FRAME)
+        for b in self._emit(Opcode.END_FRAME):
+            yield b
 
     def _write(self, addr: int, val: int) -> None:
         """Updates screen image to set 0xaddr ^= val"""
@@ -317,7 +374,8 @@ class Screen:
 
         # Undouble pixels
         return np.array(np.delete(bm, np.arange(0, bm.shape[1], 2), axis=1),
-                        dtype=np.bool)
+                       dtype=np.bool)
+        #return np.array(bm, dtype=np.bool)
 
     def from_stream(self, stream: Iterator[int]) -> Tuple[int, int, int]:
         """Replay an opcode stream to build a screen image."""
@@ -326,6 +384,7 @@ class Screen:
         num_content_changes = 0
         num_page_changes = 0
         num_content_stores = 0
+        num_rle_bytes = 0
         for b in stream:
             if b == Opcode.SET_CONTENT.value:
                 content = next(stream)
@@ -335,6 +394,13 @@ class Screen:
                 page = next(stream)
                 num_page_changes += 1
                 continue
+            elif b == Opcode.RLE.value:
+                offset = next(stream)
+                rle = next(stream)
+                num_rle_bytes += rle
+                for i in range(rle):
+                    self._write(page << 8 | ((offset + i) & 0xff), content)
+                continue
             elif b == Opcode.TICK.value:
                 continue
             elif b == Opcode.END_FRAME.value:
@@ -343,4 +409,7 @@ class Screen:
             num_content_stores += 1
             self._write(page << 8 | b, content)
 
-        return num_content_stores, num_content_changes, num_page_changes
+        return (
+            num_content_stores, num_content_changes, num_page_changes,
+            num_rle_bytes
+        )

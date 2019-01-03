@@ -141,11 +141,13 @@ def main():
 
             # Assert that the opcode stream reconstructs the same screen
             (num_content_stores, num_content_changes,
-             num_page_changes) = decoder.from_stream(iter(stream))
+             num_page_changes, num_rle_bytes) = decoder.from_stream(iter(
+                stream))
             assert np.array_equal(decoder.screen, s.screen)
-            print("stores=%d, content changes=%d, page changes=%d" % (
-                num_content_stores, num_content_changes,
-                num_page_changes))
+            print("stores=%d, content changes=%d, page changes=%d, "
+                  "rle_bytes=%d" % (
+                      num_content_stores, num_content_changes,
+                      num_page_changes, num_rle_bytes))
 
             # print(" ".join("%02x(%02d)" % (b, b) for b in stream))
             # assert that the screen decodes to the original bitmap
