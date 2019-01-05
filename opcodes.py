@@ -42,7 +42,7 @@ class State:
 
 
 class OpcodeCommand(enum.Enum):
-    OFFSET = 0x00
+    STORE = 0x00
     SET_CONTENT = 0xfb  # set new data byte to write
     SET_PAGE = 0xfc
     RLE = 0xfd
@@ -68,8 +68,8 @@ class Opcode:
         pass
 
 
-class Offset(Opcode):
-    COMMAND = OpcodeCommand.OFFSET
+class Store(Opcode):
+    COMMAND = OpcodeCommand.STORE
     _CYCLES = 36
 
     def __init__(self, offset: int):
@@ -181,7 +181,7 @@ class Decoder:
                 op = Terminate()
                 terminate = True
             else:
-                op = Offset(b)
+                op = Store(b)
                 num_content_stores += 1
 
             op.apply(self.state)

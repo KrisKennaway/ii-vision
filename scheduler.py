@@ -33,7 +33,7 @@ class HeuristicPageFirstScheduler(OpcodeScheduler):
                         #     offset, run_length))
                         yield opcodes.RLE(offset, run_length)
                     else:
-                        yield opcodes.Offset(offset)
+                        yield opcodes.Store(offset)
 
 #
 # def _tsp_opcode_scheduler(self, changes):

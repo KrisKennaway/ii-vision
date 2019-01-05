@@ -70,7 +70,7 @@ class Video:
 
         # Estimate number of opcodes that will end up fitting in the cycle
         # budget.
-        byte_cycles = opcodes.Offset(0).cycles
+        byte_cycles = opcodes.Store(0).cycles
         est_opcodes = int(cycle_budget / fullness / byte_cycles)
 
         # Sort by highest xor weight and take the estimated number of change
@@ -110,7 +110,7 @@ class Video:
             memmap[page][offset] = (bits_different, src_content, target_content)
             it.iternext()
 
-        byte_cycles = opcodes.Offset(0).cycles
+        byte_cycles = opcodes.Store(0).cycles
 
         for page, offsets in memmap.items():
             cur_content = None
