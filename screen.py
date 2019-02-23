@@ -8,9 +8,9 @@ import numpy as np
 
 def bitmap_similarity(a1: np.array, a2: np.array) -> float:
     """Measure bitwise % similarity between two bitmap arrays"""
-    bits_different = np.asscalar(np.sum(np.logical_xor(a1, a2)))
+    bits_different = np.sum(np.logical_xor(a1, a2)).item()
 
-    return 1 - (bits_different / (np.shape(a1)[0] * np.shape(a1)[1]))
+    return 1. - (bits_different / (np.shape(a1)[0] * np.shape(a1)[1]))
 
 
 class Bytemap:
