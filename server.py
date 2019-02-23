@@ -3,14 +3,15 @@ import socketserver
 ADDR = "192.168.1.15"
 PORT = 20000
 
+FILE = "out.bin"
+
 
 class ChunkHandler(socketserver.BaseRequestHandler):
     def handle(self):
-        i = 0
-        while True:
-            i += 1
-            print("sending %d" % i)
-            self.request.sendall(bytes([i % (128 - 32) + 32] * 256))
+        with open(FILE, "rb") as f:
+            data = f.read()
+            print("Sending %d bytes" % len(data))
+            self.request.sendall(data)
 
 
 def main():
