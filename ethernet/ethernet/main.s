@@ -1,6 +1,6 @@
 ;
 ;  main.s
-;  ethernet
+;  ethernet video decoder
 ;
 ;  Created by Kris Kennaway on 03/01/2019.
 ;  Copyright © 2019 Kris Kennaway. All rights reserved.
@@ -89,6 +89,12 @@ GETSIZE  =   $08  ; 2 BYTES FOR RX_RSR
 GETOFFSET =  $0A  ; 2 BYTES FOR OFFSET ADDR
 GETSTARTADR = $0C ; 2 BYTES FOR PHYSICAL ADDR
 
+hgr = $f3e2
+gr = $c050
+text = $c051
+fullscr = $c052
+tick = $c030
+
 ; RESET AND CONFIGURE W5100
     LDA   #6    ; 5 RETRIES TO GET CONNECTION
     STA   PTR   ; NUMBER OF RETRIES
@@ -143,7 +149,7 @@ RESET:
     STA WADRH
     LDA #<S0MR
     STA WADRL
-    LDA #1 ; TCP MODE
+    LDA #$21 ; TCP MODE | !DELAYED_ACK
     STA WDATA
 
 ; SET LOCAL PORT NUMBER
@@ -237,28 +243,27 @@ ERRMSG: .byte $d3,$cf,$c3,$cb,$c5,$d4,$a0,$c3,$cf,$d5,$cc,$c4,$a0,$ce,$cf,$d4,$a
 
 SETUP:
 
-; CALCULATE OFFSET ADDRESS USING READ POINTER AND RX MASK
-    LDA #<S0RXRD
-    STA WADRL
-    LDA WDATA ; HIGH BYTE
-    AND #>RXMASK
-    STA GETOFFSET+1
-    LDA WDATA ; LOW BYTE
-    AND #<RXMASK
-    STA GETOFFSET
+; SET BUFFER ADDRESS ON APPLE
+;    LDA #0 ; LOW BYTE OF BUFFER
+;    STA PTR
+;    LDA #$50 ; HIGH BYTE
+;    STA PTR+1
 
-    ;JSR DEBUG
-    ;RTS
+; init graphics
+    LDA #$7f
+    JSR hgr
+    STA fullscr
 
 ; CHECK FOR ANY RECEIVED DATA
 
 CHECKRECV:
-    BIT KBD ; KEYPRESS?
-    BPL @NEXT
-    LDA KBDSTRB
-    JMP CLOSECONN ; CLOSE CONNECTION
+    STA tick
+;    BIT KBD ; KEYPRESS?
+;    BPL @NEXT
+;    LDA KBDSTRB
+;    JMP CLOSECONN ; CLOSE CONNECTION
 
-@NEXT:
+;@NEXT:
     LDA #<S0RXRSR ; S0 RECEIVED SIZE REGISTER
     STA WADRL
     LDA WDATA       ; HIGH BYTE OF RECEIVED SIZE
@@ -267,6 +272,7 @@ CHECKRECV:
     JMP RECV        ; THERE IS DATA
 
 NORECV:
+    ; XXX needed?
     NOP ; LITTLE DELAY ...
     NOP
     JMP CHECKRECV   ; CHECK AGAIN
@@ -277,12 +283,27 @@ RECV:
     LDA #<S0RXRSR ; GET RECEIVED SIZE AGAIN
     STA WADRL
     LDA WDATA
-    ;JSR $FDDA
-    beq CHECKRECV ; expected >=1 page
+    CMP #$10 ; expect at least 4k
+    bcc CHECKRECV ; not yet
+    STA GETSIZE+1
+    LDA WDATA
+    STA GETSIZE ; low byte XXX should be 0
+    ;jsr DEBUG
 
-    LDA WDATA ; XXX: do I have to read it?  DOn't think so
-
-; We know there is at least a page in the buffer, so read it
+; reset address pointer to socket buffer
+; CALCULATE OFFSET ADDRESS USING READ POINTER AND RX MASK
+    LDA #<S0RXRD
+    STA WADRL
+    LDA WDATA ; HIGH BYTE
+    AND #>RXMASK
+    STA GETOFFSET+1
+    LDA WDATA ; LOW BYTE
+    ; why is this not 0?
+    ;BEQ @L    ; XXX assert 0
+    ;BRK
+@L:
+    AND #<RXMASK
+    STA GETOFFSET
 
 ; CALCULATE PHYSICAL ADDRESS WITHIN W5100 RX BUFFER
     CLC
@@ -293,62 +314,132 @@ RECV:
     ADC #>RXBASE
     STA GETSTARTADR+1
 
-; SET BUFFER ADDRESS ON W5100
- JSR DEBUG ; UNCOMMENT FOR W5100 DEBUG INFO
+    ; SET BUFFER ADDRESS ON W5100
+    ;JSR DEBUG ; UNCOMMENT FOR W5100 DEBUG INFO
     LDA GETSTARTADR+1 ; HIGH BYTE FIRST
     STA WADRH
     LDA GETSTARTADR
     STA WADRL
 
-; SET BUFFER ADDRESS ON APPLE
-; XXX can hoist this out of the loop and let the low byte wrap
-    LDA #0 ; LOW BYTE OF BUFFER
-    STA PTR
-    LDA #$50 ; HIGH BYTE
-    STA PTR+1
+    ; restore content
+    PLA
+    ; fall through
 
-; BEGIN COPY
-    LDY #$00
-@L:
-    LDA WDATA
-    STA (PTR),Y
-    JSR CLEANOUT ; DEBUG PRINT
-    INY
-    BNE @L
+; MAIN VIDEO LOOP
+op_nop: ; 11
+    LDY WDATA ; 4
+    STY @D+1 ; 4
+@D:
+    BRA op_done ; 3
 
-    LDA #$8D ; <CR>
-    JSR COUT ; DEBUG PRINT
+op_store: ; 20
+    LDY WDATA ; 4
+store1:
+    STA $2000,y ; 5
+    LDY WDATA ; 4
+    STY @D+1 ; 4
+@D:
+    BRA op_done ; 3
+
+op_set_content: ; 15
+    LDA WDATA ; 4
+    LDY WDATA ; 4
+    STY @D+1 ; 4
+@D:
+    BRA op_done ; 3
+
+op_set_page: ; 27
+    LDY WDATA ; 4
+    STY store1+2 ; 4
+    STY rle2+2 ; 4
+    ;STY batch_store1+2 ; 4
+    LDY WDATA ; 4
+    STY @D+1 ; 4
+@D:
+    BRA op_done ; 3
+
+op_rle: ; 12 + N (2 + 5 + 3) + (-1 + 4 + 4 + 3) = 22 + 10N
+    LDY WDATA       ; 4 start offset
+    STY rle2+1      ; 4
+    LDY WDATA       ; 4 repeat count
+rle1:
+    DEY             ; 2
+rle2:
+    STA $2000,y     ; 5
+    BNE rle1        ; 2/3
+    LDY WDATA       ; 4
+    STY @D+1        ; 4
+@D:
+    BRA op_done     ; 3
+
+;op_batch_store: ; 4 + N(4 + 5 + 2 + 3) + -1 + 4 + 4 + 3 = 14 + 14 N
+;    LDX WDATA ; 4 number of stores
+;@1:
+;    LDY WDATA ; 4 offset
+;batch_store1:
+;    STA $2000,y ; 5
+;    DEY ; 2
+;    BNE @1 ; 2/3
+;    LDY WDATA ; 4
+;    STY @D+1 ; 4
+;@D:
+;    BRA op_done ; 3
+
+; tick with cycle padding, 15 .. 35 duty cycle in increments of 2 cycles
+    ; 20 cycles of NOP
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+    NOP ; 2
+op_tick:
+    STY tick ; 4
+    LDY WDATA ; 4
+    STY @D+1 ; 4
+@D:
+    BRA op_done ; 3
+
+op_done:
+    RTS
+
+op_ack:
+; MOVE ADDRESS POINTER 1 page further in socket buffer
+;    LDX WADRH ; socket pointer
+;    INX
 
 ; UPDATE REXRD TO REFLECT DATA WE JUST READ
 
-UPDATERXRD:
+; TODO: be careful about which registers we stomp here
+
+; UPDATERXRD:
+    PHA  ; XXX
+    
     CLC
     LDA #>S0RXRD ; NEED HIGH BYTE HERE
-    STA WADRH ; XXX needed?  I think this is already set
+    STA WADRH
     LDA #<S0RXRD
     STA WADRL
-
-    LDA WDATA ; HIGH BYTE
+    LDA WDATA
     TAY ; SAVE
     LDA WDATA ; LOW BYTE ; needed?  I don't think so
-
-    INY
+    BEQ @1
+    BRK
+@1:
+    ADC #$00 ; GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
+    TAX ; SAVE
+    TYA ; GET HIGH BYTE BACK
+    ADC #$08 ;GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIZE
+    TAY ; SAVE
+    
     LDA #<S0RXRD
     STA WADRL ; XXX already there?
-    ; INC WDATA ; Does this work?  If it accesses twice it will auto-inc
     STY WDATA ; SEND HIGH BYTE
-
-;    ADC GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
-;    TAX ; SAVE
-
-;    TYA ; GET HIGH BYTE BACK
-;    ADC GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIE
-;    TAY ; SAVE
-;    LDA #<S0RXRD
-;    STA WADRL
-
-;    STY WDATA ; SEND HIGH BYTE
-;    STX WDATA ; SEND LOW BYTE
+    STX WDATA ; SEND LOW BYTE
 
 ; SEND THE RECV COMMAND
     LDA #<S0CR
@@ -402,16 +493,25 @@ DEBUG:
     JSR COUT
     LDA #$A4 ; "$"
     JSR COUT
+    LDA GETOFFSET+1
+    LDX GETOFFSET
+    JSR PRNTAX
+    
+    LDA #$A0 ; " "
+    JSR COUT
+    LDA #$A4 ; "$"
+    JSR COUT
     LDA GETSTARTADR+1
     LDX GETSTARTADR
     JSR PRNTAX
-;    LDA #$A0 ; " "
-;    JSR COUT
-;    LDA #$A4 ; "$"
-;    JSR COUT
-;    LDA GETSIZE+1
-;    LDX GETSIZE
-;    JSR PRNTAX
+    
+    LDA #$A0 ; " "
+    JSR COUT
+    LDA #$A4 ; "$"
+    JSR COUT
+    LDA GETSIZE+1
+    LDX GETSIZE
+    JSR PRNTAX
     LDA #$8D
     JMP COUT ; THIS WILL DO THE RTS
 
