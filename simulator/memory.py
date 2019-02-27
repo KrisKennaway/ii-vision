@@ -71,7 +71,8 @@ class MemoryManager:
 
         if self.regions[old_pc] != self.regions[pc]:
             print("Entering region %s" % self.regions[pc].name)
-            if not handlers:
+            # Don't worry if last instruction was RTS
+            if self.memory[old_pc] != 0x60 and not handlers:
                 raise UndefinedEntryPointException(self.regions[pc], old_pc, pc)
 
         for handler in handlers:
@@ -87,8 +88,8 @@ class MemoryManager:
             self.memory.subscribe_to_write(addr_range, region.write_interceptor)
 
         if not region.writable:
-            self.memory.subscribe_to_write(addr_range,
-                                           self.DenyWritesToRegion(region))
+            self.memory.subscribe_to_write(
+                addr_range, self.DenyWritesToRegion(region))
 
         for addr in addr_range:
             self.regions[addr] = region

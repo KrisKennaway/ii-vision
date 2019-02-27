@@ -33,6 +33,7 @@ class AppleII(machine.Machine):
             memory.MemoryRegion(
                 "ROM", 0xd000, 0xffff,
                 entrypoints={
+                    0xf3e2: machine._Event("ROM", "HGR"),
                     0xfca8: self._Wait,
                     0xfded: machine._Event("ROM", "COUT"),
                     0xfe89: machine._Event("ROM", "Select the keyboard (IN#0)")
@@ -71,9 +72,14 @@ class AppleII(machine.Machine):
             else:
                 return self.uthernet.write_data(value)
 
+        def _tick(mode, value):
+            machine.Log("Tick", self.cpu.processorCycles)
+
         # Set up interceptors for accessing various interesting parts of the
         # memory map
         self.io_map = {
+            0xc030: (
+                machine.AccessMode.RW, "TICK", _tick),
             0xc094: (
                 machine.AccessMode.RW, "WMODE", _uther_wmode),
             0xc095: (
@@ -181,16 +187,22 @@ class AppleII(machine.Machine):
                                                          address))
 
     def Run(self, pc, trace=False):
+        ctr = 0
         self.cpu.pc = pc
         old_pc = self.cpu.pc
         while True:
             self.memory_manager.MaybeInterceptExecution(self.cpu, old_pc)
             old_pc = self.cpu.pc
             if trace:
-                print(self.cpu)
-                print("  $%04X: %s" % (
+                cpu = str(self.cpu).split("\n")
+                if ctr % 20 == 0:
+                    print(cpu[0])
+                print(cpu[1], "  $%04X: %-12s  %d" % (
                     self.cpu.pc,
-                    self.disassembler.instruction_at(self.cpu.pc)[1]))
+                    self.disassembler.instruction_at(self.cpu.pc)[1],
+                    self.cpu.processorCycles
+                ))
             self.cpu.step()
             if self.cpu.pc == old_pc:
                 break
+            ctr += 1

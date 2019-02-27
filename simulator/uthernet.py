@@ -3,7 +3,7 @@ import memory
 
 
 class Uthernet(machine.Machine):
-    """Uthernet device simulator."""
+    """Uthernet/W5100 device simulator."""
 
     def __init__(self, stream:bytes):
         memory_map = [

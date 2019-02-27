@@ -61,12 +61,14 @@ class SoftSwitch:
     def set(self) -> Optional[int]:
         self.state = True
         Log(self.name, "Setting soft switch")
-        return self.callback(True)
+        if self.callback:
+            return self.callback(True)
 
     def clear(self) -> Optional[int]:
         self.state = False
         Log(self.name, "Clearing soft switch")
-        return self.callback(False)
+        if self.callback:
+            return self.callback(False)
 
     def get(self) -> int:
         Log(self.name, "Reading soft switch (%s)" % (
