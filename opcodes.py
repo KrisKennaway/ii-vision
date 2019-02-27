@@ -2,6 +2,7 @@ import enum
 from typing import Iterator, Tuple
 
 import memory_map
+import symbol_table
 
 
 class CycleCounter:
@@ -56,10 +57,10 @@ class Opcode:
     COMMAND = None  # type: OpcodeCommand
     _CYCLES = None  # type: int
 
-    # Offset of start byte in decoder
+    # Offset of start byte in decoder opcode
     _START = None  # type: int
 
-    # Offset of last byte in BRA instruction in decoder
+    # Offset of last byte in decoder opcode
     _END = None  # type: int
 
     def __repr__(self):
@@ -98,8 +99,6 @@ class Opcode:
 class Nop(Opcode):
     COMMAND = OpcodeCommand.NOP
     _CYCLES = 11
-    _START = 0x819b
-    _END = 0x81a2
 
     def __data_eq__(self, other):
         return True
@@ -107,9 +106,7 @@ class Nop(Opcode):
 
 class Store(Opcode):
     COMMAND = OpcodeCommand.STORE
-    _CYCLES = 20  # 36
-    _START = 0x81a3
-    _END = 0x81b0
+    _CYCLES = 20
 
     def __init__(self, offset: int):
         if offset < 0 or offset > 255:
@@ -134,9 +131,7 @@ class Store(Opcode):
 
 class SetContent(Opcode):
     COMMAND = OpcodeCommand.SET_CONTENT
-    _CYCLES = 15  # 62
-    _START = 0x81b1
-    _END = 0x81bb
+    _CYCLES = 15
 
     def __init__(self, content: int):
         self.content = content
@@ -158,9 +153,7 @@ class SetContent(Opcode):
 
 class SetPage(Opcode):
     COMMAND = OpcodeCommand.SET_PAGE
-    _CYCLES = 23  # 73
-    _START = 0x81bc
-    _END = 0x81cc
+    _CYCLES = 23
 
     def __init__(self, page: int):
         self.page = page
@@ -183,8 +176,6 @@ class SetPage(Opcode):
 class RLE(Opcode):
     COMMAND = OpcodeCommand.RLE
     _CYCLES = 22
-    _START = 0x81cd
-    _END = 0x81e3
 
     def __init__(self, start_offset: int, run_length: int):
         self.start_offset = start_offset
@@ -218,11 +209,9 @@ class RLE(Opcode):
 
 class Tick(Opcode):
     COMMAND = OpcodeCommand.TICK
-    _TICK_ADDR = 0x81ee
-    _END = 0x81f8
 
     def __init__(self, cycles: int):
-        self._START = self._TICK_ADDR - (cycles - 15) // 2
+        self._START -= (cycles - 15) // 2
         self._cycles = cycles
 
     def __repr__(self):
@@ -242,9 +231,7 @@ class Tick(Opcode):
 
 class Terminate(Opcode):
     COMMAND = OpcodeCommand.TERMINATE
-    _CYCLES = 6  # 50
-    _START = 0x81f9
-    _END = None
+    _CYCLES = 6
 
     def __data_eq__(self, other):
         return True
@@ -253,11 +240,62 @@ class Terminate(Opcode):
 class Ack(Opcode):
     COMMAND = OpcodeCommand.ACK
     _CYCLES = 100  # XXX todo
-    _START = 0x81fa
-    _END = None
 
     def __data_eq__(self, other):
         return True
+
+
+def _ParseSymbolTable():
+    """Read symbol table from video player debug file."""
+
+    opcode_data = {}
+    for name, data in symbol_table.SymbolTable(
+            "ethernet/ethernet/ethernet.dbg").parse().items():
+        if name.startswith("\"op_"):
+            op_name = name[4:-1]
+            start_addr = int(data["val"], 16)
+
+            opcode_data.setdefault(op_name, {})["start"] = start_addr
+
+        if name.startswith("\"end_"):
+            op_name = name[5:-1]
+            end_addr = int(data["val"], 16) - 1
+
+            opcode_data.setdefault(op_name, {})["end"] = end_addr
+
+    opcode_addrs = []
+    for op_name, addrs in opcode_data.items():
+        for op in OpcodeCommand:
+            if op.name.lower() != op_name:
+                continue
+            opcode_addrs.append(
+                (op, addrs["start"], addrs.get("end")))
+
+    return sorted(opcode_addrs, key=lambda x: (x[1], x[2]))
+
+
+def _FillOpcodeAddresses():
+    """Populate _START and _END on opcodes from symbol table."""
+    idx = 0
+    for op, start, end in _OPCODE_ADDRS:
+        cls = _OPCODE_CLASSES[op]
+        cls._START = start
+        cls._END = end
+        idx += 1
+
+
+_OPCODE_ADDRS = _ParseSymbolTable()
+_OPCODE_CLASSES = {
+    OpcodeCommand.STORE: Store,
+    OpcodeCommand.SET_CONTENT: SetContent,
+    OpcodeCommand.SET_PAGE: SetPage,
+    OpcodeCommand.RLE: RLE,
+    OpcodeCommand.TICK: Tick,
+    OpcodeCommand.TERMINATE: Terminate,
+    OpcodeCommand.NOP: Nop,
+    OpcodeCommand.ACK: Ack,
+}
+_FillOpcodeAddresses()
 
 
 class Decoder:
