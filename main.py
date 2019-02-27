@@ -6,9 +6,9 @@ import opcodes
 import screen
 import video
 
-MAX_OUT = 1 * 1024 * 1024
+MAX_OUT = 10 * 1024 * 1024
 VIDEO_FPS = 30
-APPLE_FPS = 10
+APPLE_FPS = 15
 
 
 def main():
@@ -16,6 +16,8 @@ def main():
         "Computer Chronicles - 06x05 - The Apple II.mp4")
 
     bytes_out = 0
+    sims = []
+    out_frames = 0
 
     s = video.Video(APPLE_FPS)
     screen_cls = screen.HGR140Bitmap
@@ -57,14 +59,18 @@ def main():
             bytes_out += len(stream)
             bytes_left = MAX_OUT - bytes_out
 
+            sim = screen.bitmap_similarity(im, bm)
+            sims.append(sim)
+            out_frames += 1
             print("Frame %d, %d bytes, similarity = %f" % (
-                idx, len(stream), screen.bitmap_similarity(im, bm)))
+                idx, len(stream), sim))
             out.write(stream[:bytes_left])
 
             if bytes_left <= 0:
                 out.write(bytes(s.done()))
                 break
 
+    print("Median similarity: %f" % sorted(sims)[out_frames//2])
 
 
 if __name__ == "__main__":
