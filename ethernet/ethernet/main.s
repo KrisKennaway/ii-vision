@@ -8,6 +8,9 @@
 
 .include "apple2.inc"
 
+; Write symbol table to object file
+.DEBUGINFO
+
 .org $8000
 .proc main
 ; TCP SOCKET DEMO FOR W5100/UTHERNET II
@@ -330,7 +333,8 @@ op_nop: ; 11
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    BRA op_done ; 3
+    BRA op_terminate ; 3
+end_nop:
 
 op_store: ; 20
     LDY WDATA ; 4
@@ -339,14 +343,16 @@ store1:
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    BRA op_done ; 3
+    BRA op_terminate ; 3
+end_store:
 
 op_set_content: ; 15
     LDA WDATA ; 4
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    BRA op_done ; 3
+    BRA op_terminate ; 3
+end_set_content:
 
 op_set_page: ; 27
     LDY WDATA ; 4
@@ -356,7 +362,8 @@ op_set_page: ; 27
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    BRA op_done ; 3
+    BRA op_terminate ; 3
+end_set_page:
 
 op_rle: ; 12 + N (2 + 5 + 3) + (-1 + 4 + 4 + 3) = 22 + 10N
     LDY WDATA       ; 4 start offset
@@ -370,7 +377,8 @@ rle2:
     LDY WDATA       ; 4
     STY @D+1        ; 4
 @D:
-    BRA op_done     ; 3
+    BRA op_terminate     ; 3
+end_rle:
 
 ;op_batch_store: ; 4 + N(4 + 5 + 2 + 3) + -1 + 4 + 4 + 3 = 14 + 14 N
 ;    LDX WDATA ; 4 number of stores
@@ -383,7 +391,7 @@ rle2:
 ;    LDY WDATA ; 4
 ;    STY @D+1 ; 4
 ;@D:
-;    BRA op_done ; 3
+;    BRA op_terminate ; 3
 
 ; tick with cycle padding, 15 .. 35 duty cycle in increments of 2 cycles
     ; 20 cycles of NOP
@@ -402,10 +410,12 @@ op_tick:
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    BRA op_done ; 3
+    BRA op_terminate ; 3
+end_tick:
 
-op_done:
+op_terminate:
     RTS
+end_terminate:
 
 op_ack:
 ; MOVE ADDRESS POINTER 1 page further in socket buffer

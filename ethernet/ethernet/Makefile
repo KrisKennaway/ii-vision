@@ -78,7 +78,10 @@ SRCDIRS+=
 
 # If you want to add arguments to the link commandline, add them to
 # this variable:
-#    LDFLAGS += -v
+#
+# Write out a debug file containing symbol table, so we can parse the opcode
+# offsets in the video encoder.
+    LDFLAGS += -Wl --dbgfile,ethernet.dbg
 
 # If you want to add arguments to the BASIC tokenizer commandline,
 # add them to this valiable:
