@@ -4,11 +4,73 @@ import collections
 from typing import Iterator
 
 import opcodes
+import random
 
 
 class OpcodeScheduler:
     def schedule(self, changes) -> Iterator[opcodes.Opcode]:
         raise NotImplementedError
+
+
+def nonce():
+    return random.randint(0, 255)
+
+
+class HeuristicPageFirstScheduler(OpcodeScheduler):
+    """Group by page first then content byte.
+
+    Grouping by page (rather than content) means that we'll reduce the window
+    of time during which we have violated a colour invariant due to bits
+    hanging across byte boundaries.
+    """
+
+    # Median similarity: 0.862798 @ 15 fps, 10M output
+    def schedule(self, changes):
+        data = {}
+
+        page_weights = collections.defaultdict(int)
+        page_content_weights = {}
+        for ch in changes:
+            xor_weight, page, offset, content, run_length = ch
+            data.setdefault((page, content), list()).append(
+                (xor_weight, run_length, offset))
+            page_weights[page] += xor_weight
+            page_content_weights.setdefault(page, collections.defaultdict(
+                int))[content] += xor_weight
+
+        # Weight each page and content within page by total xor weight and
+        # traverse in this order, with a random nonce so that we don't
+        # consistently prefer higher-valued pages etc.
+
+        pages = sorted(
+            list(page_weights.keys()),
+            key=lambda p: (page_weights[p], nonce()), reverse=True)
+        for page in pages:
+            yield opcodes.SetPage(page)
+
+            content_weights = page_content_weights[page]
+            contents = sorted(
+                list(content_weights.keys()),
+                key=lambda c: (content_weights[c], nonce()),
+                reverse=True)
+
+            for content in contents:
+                yield opcodes.SetContent(content)
+                offsets = sorted(
+                    data[(page, content)],
+                    key=lambda x: (x[0], nonce()),
+                    reverse=True)
+
+                # print("page %d content %d offsets %s" % (page, content,
+                #                                         offsets))
+                for (_, run_length, offset) in offsets:
+                    if run_length > 1:
+                        # print("Offset %d run length %d" % (
+                        #     offset, run_length))
+                        yield opcodes.RLE(offset, run_length)
+                    else:
+                        yield opcodes.Store(offset)
+
 
 
 class HeuristicContentFirstScheduler(OpcodeScheduler):
@@ -54,61 +116,6 @@ class HeuristicContentFirstScheduler(OpcodeScheduler):
 
                 # print("page %d content %d offsets %s" % (page, content,
                 #                                        offsets))
-                for (_, run_length, offset) in offsets:
-                    if run_length > 1:
-                        # print("Offset %d run length %d" % (
-                        #     offset, run_length))
-                        yield opcodes.RLE(offset, run_length)
-                    else:
-                        yield opcodes.Store(offset)
-
-
-class HeuristicPageFirstScheduler(OpcodeScheduler):
-    """Group by page first then content byte.
-
-    Grouping by page (rather than content) means that we'll reduce the window
-    of time during which we have violated a colour invariant due to bits
-    hanging across byte boundaries.
-    """
-
-    # Median similarity: 0.862798 @ 15 fps, 10M output
-    def schedule(self, changes):
-        data = {}
-
-        page_weights = collections.defaultdict(int)
-        page_content_weights = {}
-        for ch in changes:
-            xor_weight, page, offset, content, run_length = ch
-            data.setdefault((page, content), list()).append(
-                (xor_weight, run_length, offset))
-            page_weights[page] += xor_weight
-            page_content_weights.setdefault(page, collections.defaultdict(
-                int))[content] += xor_weight
-
-        # Weight each page and content within page by total xor weight and
-        # traverse in this order
-
-        pages = sorted(
-            list(page_weights.keys()),
-            key=lambda p: page_weights[p], reverse=True)
-        for page in pages:
-            yield opcodes.SetPage(page)
-
-            content_weights = page_content_weights[page]
-            contents = sorted(
-                list(content_weights.keys()),
-                key=lambda c: content_weights[c],
-                reverse=True)
-
-            for content in contents:
-                yield opcodes.SetContent(content)
-                offsets = sorted(
-                    data[(page, content)],
-                    key=lambda x: x[0],
-                    reverse=True)
-
-                # print("page %d content %d offsets %s" % (page, content,
-                #                                         offsets))
                 for (_, run_length, offset) in offsets:
                     if run_length > 1:
                         # print("Offset %d run length %d" % (
