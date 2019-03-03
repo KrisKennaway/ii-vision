@@ -3,7 +3,6 @@ from typing import Iterator, Tuple, Iterable
 
 import opcodes
 import scheduler
-import memory_map
 import screen
 
 
@@ -20,14 +19,13 @@ class Video:
 
     CLOCK_SPEED = 1024 * 1024
 
-    def __init__(self, frame_rate: int = 15, screen_page: int = 0,
+    def __init__(self, frame_rate: int = 15, screen_page: int = 1,
                  opcode_scheduler: scheduler.OpcodeScheduler = None):
         self.screen_page = screen_page
 
         # Initialize empty
-        self.screen = screen.HGRBitmap().pack()  # type: screen.Bytemap
-
-        self.memory_map = memory_map.MemoryMap(screen_page, self.screen)
+        self.memory_map = screen.MemoryMap(
+            self.screen_page)  # type: screen.MemoryMap
 
         self.scheduler = (
                 opcode_scheduler or scheduler.HeuristicPageFirstScheduler())
@@ -45,7 +43,7 @@ class Video:
 
         self._last_op = opcodes.Nop()
 
-    def encode_frame(self, frame: screen.Bitmap) -> Iterator[opcodes.Opcode]:
+    def encode_frame(self, frame: screen.MemoryMap) -> Iterator[opcodes.Opcode]:
         """Update to match content of frame within provided budget.
 
         Emits encoded byte stream for rendering the image.
@@ -69,12 +67,12 @@ class Video:
         """
 
         # Target screen memory map for new frame
-        target = frame.pack()
+        target = frame
 
         # Sort by highest xor weight and take the estimated number of change
         # operations
         # TODO: changes should be a class
-        changes = sorted(list(self._index_changes(self.screen, target)),
+        changes = sorted(list(self._index_changes(self.memory_map, target)),
                          reverse=True)
 
         yield from self.scheduler.schedule(changes)
@@ -146,24 +144,21 @@ class Video:
 
     def _index_changes(
             self,
-            source: screen.Bytemap,
-            target: screen.Bytemap) -> Iterator[Tuple[int, int, int, int, int]]:
+            source: screen.MemoryMap,
+            target: screen.MemoryMap
+    ) -> Iterator[Tuple[int, int, int, int, int]]:
         """Transform encoded screen to sequence of change tuples.
 
         Change tuple is (xor_weight, page, offset, content, run_length)
         """
 
-        # TODO: work with memory maps directly?
-        source_memmap = memory_map.MemoryMap.to_memory_map(source.bytemap)
-        target_memmap = memory_map.MemoryMap.to_memory_map(target.bytemap)
-
         # TODO: don't use 256 bytes if XMAX is smaller, or we may compute RLE
         # (with bit errors) over the full page!
-        diff_weights = hamming_weight(source_memmap ^ target_memmap)
+        diff_weights = hamming_weight(source.page_offset ^ target.page_offset)
 
         for page in range(32):
             for change in self._index_page(
-                    diff_weights[page], target_memmap[page]):
+                    diff_weights[page], target.page_offset[page]):
                 total_xor_in_run, start_offset, target_content, run_length = \
                     change
 

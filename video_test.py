@@ -18,7 +18,7 @@ class TestHammingWeight(unittest.TestCase):
 
 class TestVideo(unittest.TestCase):
     def testEncodeEmptyFrame(self):
-        f = screen.HGR140Bitmap()
+        f = screen.MemoryMap(screen_page=1)
         v = video.Video()
 
         self.assertEqual([], list(v.encode_frame(f)))
@@ -28,7 +28,7 @@ class TestVideo(unittest.TestCase):
         a = np.zeros((f.YMAX, f.XMAX), dtype=bool)
         a[0, 0] = True
 
-        f = screen.HGR140Bitmap(a)
+        f = screen.HGR140Bitmap(a).to_memory_map(screen_page=1)
 
         v = video.Video()
 
@@ -133,12 +133,12 @@ class TestEncodeDecode(unittest.TestCase):
 
             im = np.random.randint(
                 0, 2, (screen_cls.YMAX, screen_cls.XMAX), dtype=np.bool)
-            f = screen_cls(im)
+            f = screen_cls(im).to_memory_map(screen_page=1)
 
             _ = bytes(s.emit_stream(s.encode_frame(f)))
 
             # assert that the screen decodes to the original bitmap
-            bm = screen_cls.from_bytemap(s.screen).bitmap
+            bm = screen_cls.from_bytemap(s.memory_map.to_bytemap()).bitmap
 
             self.assertTrue(np.array_equal(bm, im))
 
@@ -150,16 +150,16 @@ class TestEncodeDecode(unittest.TestCase):
 
             im = np.random.randint(
                 0, 2, (screen_cls.YMAX, screen_cls.XMAX), dtype=np.bool)
-            f = screen_cls(im)
+            f = screen_cls(im).to_memory_map(screen_page=1)
             _ = bytes(s.emit_stream(s.encode_frame(f)))
 
             im2 = np.random.randint(
                 0, 2, (screen_cls.YMAX, screen_cls.XMAX), dtype=np.bool)
-            f = screen_cls(im2)
+            f = screen_cls(im2).to_memory_map(screen_page=1)
             _ = bytes(s.emit_stream(s.encode_frame(f)))
 
             # assert that the screen decodes to the original bitmap
-            bm = screen_cls.from_bytemap(s.screen).bitmap
+            bm = screen_cls.from_bytemap(s.memory_map.to_bytemap()).bitmap
 
             self.assertTrue(np.array_equal(bm, im2))
 

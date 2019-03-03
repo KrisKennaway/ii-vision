@@ -1,7 +1,7 @@
 import enum
 from typing import Iterator, Tuple
 
-import memory_map
+import screen
 import symbol_table
 
 
@@ -20,7 +20,7 @@ class State:
     """Represents virtual machine state."""
 
     def __init__(self, cycle_counter: CycleCounter,
-                 memmap: memory_map.MemoryMap):
+                 memmap: screen.MemoryMap):
         self.page = 0x20
         self.content = 0x7f
 
@@ -126,7 +126,7 @@ class Store(Opcode):
         yield self.offset
 
     def apply(self, state):
-        state.memmap.write(state.page << 8 | self.offset, state.content)
+        state.memmap.write(state.page, self.offset, state.content)
 
 
 class SetContent(Opcode):
@@ -202,7 +202,7 @@ class RLE(Opcode):
     def apply(self, state):
         for i in range(self.run_length):
             state.memmap.write(
-                state.page << 8 | ((self.start_offset + i) & 0xff),
+                state.page, (self.start_offset + i) & 0xff,
                 state.content
             )
 
