@@ -31,12 +31,12 @@ class HeuristicPageFirstScheduler(OpcodeScheduler):
         page_weights = collections.defaultdict(int)
         page_content_weights = {}
         for ch in changes:
-            xor_weight, page, offset, content, run_length = ch
+            update_priority, page, offset, content, run_length = ch
             data.setdefault((page, content), list()).append(
-                (xor_weight, run_length, offset))
-            page_weights[page] += xor_weight
+                (update_priority, run_length, offset))
+            page_weights[page] += update_priority
             page_content_weights.setdefault(page, collections.defaultdict(
-                int))[content] += xor_weight
+                int))[content] += update_priority
 
         # Weight each page and content within page by total xor weight and
         # traverse in this order, with a random nonce so that we don't
@@ -87,12 +87,12 @@ class HeuristicContentFirstScheduler(OpcodeScheduler):
         content_weights = collections.defaultdict(int)
         content_page_weights = {}
         for ch in changes:
-            xor_weight, page, offset, content, run_length = ch
+            update_priority, page, offset, content, run_length = ch
             data.setdefault((page, content), list()).append(
-                (xor_weight, run_length, offset))
-            content_weights[content] += xor_weight
+                (update_priority, run_length, offset))
+            content_weights[content] += update_priority
             content_page_weights.setdefault(content, collections.defaultdict(
-                int))[page] += xor_weight
+                int))[page] += update_priority
 
         # Weight each page and content within page by total xor weight and
         # traverse in this order
@@ -129,7 +129,7 @@ class OldHeuristicPageFirstScheduler(OpcodeScheduler):
     """Group by page first then content byte.
 
     This uses a deterministic order of pages and content bytes, and ignores
-    xor_weight altogether
+    update_priority altogether
     """
 
     # Median similarity: 0.854613 ( @ 15 fps, 10M output)
@@ -141,7 +141,7 @@ class OldHeuristicPageFirstScheduler(OpcodeScheduler):
     def schedule(self, changes):
         data = {}
         for ch in changes:
-            xor_weight, page, offset, content, run_length = ch
+            update_priority, page, offset, content, run_length = ch
             data.setdefault(page, {}).setdefault(content, set()).add(
                 (run_length, offset))
 
@@ -234,7 +234,7 @@ class OldHeuristicPageFirstScheduler(OpcodeScheduler):
 #     # Heuristic: group by content byte first then page
 #     data = {}
 #     for ch in changes:
-#         xor_weight, page, offset, content = ch
+#         update_priority, page, offset, content = ch
 #         data.setdefault(content, {}).setdefault(page, set()).add(offset)
 #
 #     for content, page_offsets in data.items():

@@ -1,6 +1,9 @@
 import functools
 from typing import Iterator, Tuple, Iterable
 
+import numpy as np
+from similarity.damerau import Damerau
+
 import opcodes
 import scheduler
 import screen
@@ -12,6 +15,56 @@ def hamming_weight(n):
     n = (n & 0x33) + ((n & 0xCC) >> 2)
     n = (n & 0x0F) + ((n & 0xF0) >> 4)
     return n
+
+
+@functools.lru_cache(None)
+def edit_weight(a: int, b: int, is_odd_offset: bool):
+    d = Damerau()
+
+    a_pixels = byte_to_colour_string(a, is_odd_offset)
+    b_pixels = byte_to_colour_string(b, is_odd_offset)
+
+    return d.distance(a_pixels, b_pixels)
+
+
+@functools.lru_cache(None)
+def byte_to_colour_string(b: int, is_odd_offset: bool) -> str:
+    pixels = []
+
+    idx = 0
+    if is_odd_offset:
+        pixels.append("01"[b & 0x01])
+        idx += 1
+
+    # K = black
+    # G = green
+    # V = violet
+    # W = white
+    palettes = (
+        (
+            "K",  # 0x00
+            "V",  # 0x01
+            "G",  # 0x10
+            "W"  # 0x11
+        ), (
+            "K",  # 0x00
+            "O",  # 0x01
+            "B",  # 0x10
+            "W"  # 0x11
+        )
+    )
+    palette = palettes[b & 0x80 != 0]
+
+    for _ in range(3):
+        pixel = palette[(b >> idx) & 0b11]
+        pixels.append(pixel)
+        idx += 2
+
+    if not is_odd_offset:
+        pixels.append("01"[b & 0x40 != 0])
+        idx += 1
+
+    return "".join(pixels)
 
 
 class Video:
@@ -32,7 +85,11 @@ class Video:
 
         self.cycle_counter = opcodes.CycleCounter()
 
-        self.state = opcodes.State(self.cycle_counter, self.memory_map)
+        # Accumulates pending edit weights across frames
+        self.update_priority = np.zeros((32, 256), dtype=np.int)
+
+        self.state = opcodes.State(
+            self.cycle_counter, self.memory_map, self.update_priority)
 
         self.frame_rate = frame_rate
         self.stream_pos = 0
@@ -43,7 +100,8 @@ class Video:
 
         self._last_op = opcodes.Nop()
 
-    def encode_frame(self, frame: screen.MemoryMap) -> Iterator[opcodes.Opcode]:
+    def encode_frame(self, target: screen.MemoryMap) -> Iterator[
+        opcodes.Opcode]:
         """Update to match content of frame within provided budget.
 
         Emits encoded byte stream for rendering the image.
@@ -66,14 +124,8 @@ class Video:
         it optimizes the bytestream.
         """
 
-        # Target screen memory map for new frame
-        target = frame
-
-        # Sort by highest xor weight and take the estimated number of change
-        # operations
         # TODO: changes should be a class
-        changes = sorted(list(self._index_changes(self.memory_map, target)),
-                         reverse=True)
+        changes = self._index_changes(self.memory_map, target)
 
         yield from self.scheduler.schedule(changes)
 
@@ -92,7 +144,7 @@ class Video:
         num_changes_in_run = 0
 
         # Total weight of differences accumulated in run
-        total_xor_in_run = 0
+        total_update_priority_in_run = 0
 
         def end_run():
             # Decide if it's worth emitting as a run vs single stores
@@ -109,7 +161,9 @@ class Video:
                 #       )
                 # print(run)
                 yield (
-                    total_xor_in_run, start_offset, cur_content, run_length)
+                    total_update_priority_in_run, start_offset, cur_content,
+                    run_length
+                )
             else:
                 for ch in run:
                     if ch[0]:
@@ -126,7 +180,7 @@ class Video:
                 run = []
                 run_length = 0
                 num_changes_in_run = 0
-                total_xor_in_run = 0
+                total_update_priority_in_run = 0
                 cur_content = tc
 
             if cur_content is None:
@@ -136,7 +190,7 @@ class Video:
             run.append((bd, offset, tc, 1))
             if bd:
                 num_changes_in_run += 1
-                total_xor_in_run += bd
+                total_update_priority_in_run += bd
 
         if run:
             # End of run
@@ -149,22 +203,39 @@ class Video:
     ) -> Iterator[Tuple[int, int, int, int, int]]:
         """Transform encoded screen to sequence of change tuples.
 
-        Change tuple is (xor_weight, page, offset, content, run_length)
+        Change tuple is (update_priority, page, offset, content, run_length)
         """
 
-        # TODO: don't use 256 bytes if XMAX is smaller, or we may compute RLE
-        # (with bit errors) over the full page!
-        diff_weights = hamming_weight(source.page_offset ^ target.page_offset)
+        diff_weights = np.zeros((32, 256), dtype=np.uint8)
+
+        it = np.nditer(
+            source.page_offset ^ target.page_offset,
+            flags=['multi_index'])
+        while not it.finished:
+            diff_weights[it.multi_index] = edit_weight(
+                source.page_offset[it.multi_index],
+                target.page_offset[it.multi_index],
+                it.multi_index[1] % 2 == 1
+            )
+            it.iternext()
+
+        # Clear any update priority entries that have resolved themselves 
+        # with new frame
+        self.update_priority[diff_weights == 0] = 0
+
+        self.update_priority += diff_weights
 
         for page in range(32):
             for change in self._index_page(
-                    diff_weights[page], target.page_offset[page]):
-                total_xor_in_run, start_offset, target_content, run_length = \
-                    change
+                    self.update_priority[page], target.page_offset[page]):
+                (
+                    total_priority_in_run, start_offset, target_content,
+                    run_length
+                ) = change
 
                 # TODO: handle screen page
                 yield (
-                    total_xor_in_run, page + 32, start_offset,
+                    total_priority_in_run, page + 32, start_offset,
                     target_content, run_length
                 )
 

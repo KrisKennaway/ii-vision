@@ -1,4 +1,5 @@
 import enum
+import numpy as np
 from typing import Iterator, Tuple
 
 import screen
@@ -20,12 +21,13 @@ class State:
     """Represents virtual machine state."""
 
     def __init__(self, cycle_counter: CycleCounter,
-                 memmap: screen.MemoryMap):
+                 memmap: screen.MemoryMap, update_priority: np.array):
         self.page = 0x20
         self.content = 0x7f
 
         self.memmap = memmap
         self.cycle_counter = cycle_counter
+        self.update_priority = update_priority
 
     def emit(self, last_opcode: "Opcode", opcode: "Opcode") -> Iterator[int]:
         cmd = opcode.emit_command(last_opcode, opcode)
@@ -127,6 +129,8 @@ class Store(Opcode):
 
     def apply(self, state):
         state.memmap.write(state.page, self.offset, state.content)
+        # TODO: screen page
+        state.update_priority[state.page - 32, self.offset] = 0
 
 
 class SetContent(Opcode):
@@ -193,7 +197,7 @@ class RLE(Opcode):
     def emit_data(self):
         # print("  RLE @ %02x * %02x" % (self.start_offset, self.run_length))
         yield self.start_offset
-        yield self.run_length
+        yield self.run_length - 1
 
     @property
     def cycles(self):
@@ -201,10 +205,10 @@ class RLE(Opcode):
 
     def apply(self, state):
         for i in range(self.run_length):
-            state.memmap.write(
-                state.page, (self.start_offset + i) & 0xff,
-                state.content
-            )
+            offset = (self.start_offset + i) & 0xff
+            state.memmap.write(state.page, offset, state.content)
+            # TODO: screen page
+            state.update_priority[state.page - 32, offset] = 0
 
 
 class Tick(Opcode):
