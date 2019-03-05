@@ -381,133 +381,118 @@ op_tick_4:
     BIT tick ; 4
     BIT tick ; 4
 
-    NOP ; 2
-    STA dummy ; 4
+    STA zpdummy ; 3
+    STA zpdummy ; 3
 
+    ; load content byte
+_op_tick_tail_59:
     LDA WDATA ; 4
 
+    ; 4 x offset stores
+_op_tick_tail_55:
     LDY WDATA ; 4
+_op_tick_tail_51:
     STA $2000,Y ; 5
+_op_tick_tail_46:
     LDY WDATA ; 4
+_op_tick_tail_42:
     STA $2000,Y ; 5
+_op_tick_tail_37:
     LDY WDATA ; 4
+_op_tick_tail_33:
     STA $2000,Y ; 5
+_op_tick_tail_28:
     LDY WDATA ; 4
+_op_tick_tail_24:
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
+    ; vector to next opcode
+_op_tick_tail_19:
+    LDA WDATA ; 4
+_op_tick_tail_15:
+    STA _op_tick_4_jmp+2 ; 4
+_op_tick_tail_11:
+    LDA WDATA ; 4
+_op_tick_tail_7:
+    STA _op_tick_4_jmp+1 ; 4
+_op_tick_4_jmp:
     JMP op_nop ; 3
 
-;4+(2+4)+4+4+4+5+4+5+4+5+4+5+4+4+4+4+3
+;4+(2+4)+3+4+4+5+4+5+4+5+4+5+4+4+4+5+3
 op_tick_6:
     BIT tick ; 4
     NOP ; 2
     BIT tick ; 4
 
-    STA dummy ; 4
+    STA zpdummy ; 3
 
+_op_tick_tail_60:
     LDA WDATA ; 4
 
+_op_tick_tail_56:
     LDY WDATA ; 4
+_op_tick_tail_52:
     STA $2000,Y ; 5
+_op_tick_tail_47:
     LDY WDATA ; 4
+_op_tick_tail_43:
     STA $2000,Y ; 5
+_op_tick_tail_38:
     LDY WDATA ; 4
+_op_tick_tail_34:
     STA $2000,Y ; 5
+_op_tick_tail_29:
     LDY WDATA ; 4
+_op_tick_tail_25:
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
+_op_tick_tail_20:
+    LDA WDATA ; 4
+_op_tick_tail_16:
+    STA _op_tick_6_jmp+2 ; 4
+_op_tick_tail_12:
+    LDA WDATA ; 4
+_op_tick_tail_8:
+    STA _op_tick_6_jmp+1,x ; 5
+_op_tick_6_jmp:
     JMP op_nop ; 3
 
+;4+(4+4)+3+3+55
 op_tick_8:
-
     BIT tick ; 4
     LDA WDATA ; 4
     BIT tick ; 4
 
-    NOP ; 2
-    STA dummy ; 4
+    STA zpdummy ; 3
+    JMP _op_tick_tail_55 ; 3 + 55
 
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+;4+(4+2+4)+3+56
 op_tick_10:
     BIT tick ; 4
     LDA WDATA ; 4
     NOP ; 2
     BIT tick ; 4
-    STA dummy ; 4
+    
+    JMP _op_tick_tail_56 ; 3 + 56
 
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+;4+(4+4+4)+3+3+51
 op_tick_12:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     BIT tick ; 4
 
-    NOP ; 2
-    STA dummy ; 4
+    STA zpdummy ; 3
+    JMP _op_tick_tail_51 ; 3 + 51
 
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
-
+;4+(4+4+4+2+4)
 op_tick_14:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     NOP ; 2
     BIT tick ; 4
-
+    
     STA dummy ; 4
 
     STA $2000,Y ; 5
@@ -518,10 +503,10 @@ op_tick_14:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
@@ -529,11 +514,11 @@ op_tick_14:
 op_tick_16:
     BIT tick ; 4
     LDA WDATA ; 4
-    STA dummy ; 4
     LDY WDATA ; 4
+    STA dummy ; 4
     BIT tick ; 4
 
-    NOP ;2
+    NOP ; 2
 
     STA $2000,Y ; 5
     LDY WDATA ; 4
@@ -543,10 +528,10 @@ op_tick_16:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
@@ -555,7 +540,7 @@ op_tick_18:
     LDA WDATA ; 4
     LDY WDATA ; 4
     STA $2000,Y ; 5
-    BIT tick ; XXX off by one ; 5 !!! together these two offset the need for the NOP
+    BIT tick ; 4 XXX off by one  - only 17 cycles
 
     STA dummy,X ; 5 !!!
 
@@ -566,37 +551,23 @@ op_tick_18:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-;4+(4+4+5+2+5)+3+4+5+4+5+4+5+4+4+4+4+3=73
+;4+(4+4+5+3+4)+3+46=73
 op_tick_20:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     STA $2000,Y ; 5
-    NOP ; 2
-    BIT tick ; XXX off by one ; 5 !!! together these offset the STA dummy
-
-    STY zpdummy ; 3 cycles !!!
-
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    STA zpdummy ; 3
+    BIT tick ; 4
+    
+    JMP _op_tick_tail_46
 
 ; 4+(4+4+5+4+5)+5+5+4+5+4+5+4+4+4+4+3=73
 op_tick_22:
@@ -605,7 +576,7 @@ op_tick_22:
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    BIT tick ; XXX off by one ; 5 !!!
+    BIT tick ; 4 XXX off by one
 
     STA dummy,X ; 5 !!!
 
@@ -615,40 +586,26 @@ op_tick_22:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-;4+(4+4+5+4+2+5)+3+5+4+5+4+5+4+4+4+4+3
+;4+(4+4+5+4+3+4)+3+42
 op_tick_24:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    NOP ; 2
-    BIT tick ; XXX off by one ; 5 !!!
+    STA zpdummy ; 3
+    BIT tick ; 4
+    
+    JMP _op_tick_tail_42
 
-    STY zpdummy ; 3 !!!
-
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
-; 4+(4+4+5+4+5+4)+4+4+5+4+5+4+4+4+4+3
+; 4+(4+4+5+4+5+4)+3+37
 op_tick_26: ; repeats from op_tick_8
     BIT tick ; 4
     LDA WDATA ; 4
@@ -658,47 +615,23 @@ op_tick_26: ; repeats from op_tick_8
     STA $2000,Y ; 5
     BIT tick; 4
 
-    NOP
-    STA dummy ; 4
+    STA zpdummy ; 3
+    JMP _op_tick_tail_37 ; 3 + 37
 
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
-; 4+(4+2+4+5+4+5+4)+4+4+5+4+5+4+4+4+4+3
+; 4+(4+2+4+5+4+5+4)+3+38
 op_tick_28: ; repeats from op_tick_10
     BIT tick ; 4
     LDA WDATA ; 4
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
     NOP ; 2
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
     BIT tick ; 4
 
-    STA dummy ; 4
+    JMP _op_tick_tail_38
 
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
-;4+(4+4+5+4+5+4+4)+2+4+5+4+5+4+4+4+4+3
+;4+(4+4+5+4+5+4+4)+3+3+33
 op_tick_30: ; repeats from op_tick_12
     BIT tick ; 4
     LDA WDATA ; 4
@@ -709,20 +642,10 @@ op_tick_30: ; repeats from op_tick_12
     LDY WDATA ; 4
     BIT tick ; 4
 
-    NOP ; 2
-    STA dummy ; 4
+    STA zpdummy ; 3
+    JMP _op_tick_tail_33 ; 3 + 33
 
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+;4+(4+4+5+4+5+4+2+4)+3+34
 op_tick_32: ; repeats from op_tick_14
     BIT tick ; 4
     LDA WDATA ; 4
@@ -733,41 +656,30 @@ op_tick_32: ; repeats from op_tick_14
     LDY WDATA ; 4
     NOP ; 2
     BIT tick ; 4
-
-    STA dummy ; 4
-
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    
+    JMP _op_tick_tail_34
 
 op_tick_34: ; repeats from op_tick_16
     BIT tick ; 4
     LDA WDATA ; 4
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
+    LDY WDATA ; 4
     STA dummy ; 4
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
     BIT tick ; 4
 
-    NOP ;2
+    NOP ; 2
 
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
@@ -780,20 +692,21 @@ op_tick_36: ; repeats from op_tick_18
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
-    BIT tick ; XXX off by one ; 5 !!! together these two offset the need for the NOP
+    BIT tick ; 4 XXX off by one
 
     STA dummy,X ; 5 !!!
 
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
+; 4 + (4+4+5+4+5+4+5+3+4)+3+28
 op_tick_38: ; repeats from op_tick_20
     BIT tick ; 4
     LDA WDATA ; 4
@@ -803,20 +716,10 @@ op_tick_38: ; repeats from op_tick_20
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
-    NOP ; 2
-    BIT tick ; XXX off by one ; 5 !!! together these offset the STA dummy
-
-    STY zpdummy ; 3 cycles !!!
-
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    STA zpdummy ; 3
+    BIT tick ; 4
+    
+    JMP _op_tick_tail_28 ; 3 + 28
 
 op_tick_40: ; repeats from op_tick_22
     BIT tick ; 4
@@ -834,14 +737,14 @@ op_tick_40: ; repeats from op_tick_22
 
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-;4+(4+4+5+4+5+4+5+4+2+5)+3+5+4+4+4+4+3
+;4+(4+4+5+4+5+4+5+4+3+4)+3+24
 op_tick_42: ; repeats from op_tick_24
     BIT tick ; 4
     LDA WDATA ; 4
@@ -849,24 +752,15 @@ op_tick_42: ; repeats from op_tick_24
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
-
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    NOP ; 2
-    BIT tick ; XXX off by one ; 5 !!!
-
-    STY zpdummy ; 3 !!!
-
-    STA $2000,Y ; 5
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+    STA zpdummy ; 3
+    BIT tick ; 4
+    
+    JMP _op_tick_tail_24 ; 3 + 24
+    
+; 4 + (4+4+5+4+5+4+5+4+5+4)+3+3+19
 op_tick_44: ; repeats from op_tick_26
     BIT tick ; 4
     LDA WDATA ; 4
@@ -880,41 +774,27 @@ op_tick_44: ; repeats from op_tick_26
     STA $2000,Y ; 5
     BIT tick; 4
 
-    NOP
-    STA dummy ; 4
+    STA zpdummy ; 3
+    JMP _op_tick_tail_19 ; 3 + 19
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
-
-;4+(4+2+4+5+4+5+4+5+4+5+4)+4+4+4+4+4+3
+;4+(4+2+4+5+4+5+4+5+4+5+4)+3+20
 op_tick_46: ; repeats from op_tick_28
     BIT tick ; 4
     LDA WDATA ; 4
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
+    LDY WDATA ; 4
+    STA $2000,Y ; 5
     NOP ; 2
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
     BIT tick ; 4
 
-    STA dummy ; 4
-
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+    JMP _op_tick_tail_20
+    
+;4+(4+4+5+4+5+4+5+4+5+4+4)+3+3+15
 op_tick_48: ; repeats from op_tick_30
     BIT tick ; 4
     LDA WDATA ; 4
@@ -927,18 +807,13 @@ op_tick_48: ; repeats from op_tick_30
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
+    LDA WDATA ; 4
     BIT tick ; 4
 
-    NOP ; 2
-    STA dummy ; 4
+    STA zpdummy ; 3
+    JMP _op_tick_tail_15 ; 3 + 15
 
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+;4+(4+4+5+4+5+4+5+4+5+4+2+4)+3+16
 op_tick_50: ; repeats from op_tick_32
     BIT tick ; 4
     LDA WDATA ; 4
@@ -951,22 +826,15 @@ op_tick_50: ; repeats from op_tick_32
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
+    LDA WDATA ; 4
     NOP ; 2
     BIT tick ; 4
-
-    STA dummy ; 4
-
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    
+    JMP _op_tick_tail_16
 
 op_tick_52: ; repeats from op_tick_34
     BIT tick ; 4
     LDA WDATA ; 4
-    STA dummy ; 4
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
@@ -976,18 +844,21 @@ op_tick_52: ; repeats from op_tick_34
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
+    LDA WDATA ; 4
+
+    STA dummy ; 4
     BIT tick ; 4
 
+    ; used >3 pad cycles within tick loop; can't branch to tail
     NOP ;2
 
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-; 4 + (4+4+5+4+5+4+5+5+4+5+4+5)+4+4+4+3
+; 4 + (4+4+5+4+5+4+5+3+3+4+5+4+4)+4+4+4+3
 op_tick_54: ; repeats from op_tick_36
     BIT tick ; 4
     LDA WDATA ; 4
@@ -997,21 +868,24 @@ op_tick_54: ; repeats from op_tick_36
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
-    STA dummy,X ; 5 !!!
-
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    BIT TICK ; 5 !!! XXX off by one together these two offset the need for the NOP
+    LDA WDATA ; 4
+    
+    STA zpdummy ; 3
+    STA zpdummy ; 3
 
-    STY @D+2 ; 4
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    BIT TICK ; 4
+
+    ; used >3 pad cycles within tick loop; can't branch to tail
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-; 4+(4+4+5+4+5+4+5+4+5+4+4+3+5)+2+4+4+3
+; 4+(4+4+5+4+5+4+5+4+5+4+4+4+4)+2+4+4+3
 op_tick_56:
     BIT tick ; 4
     LDA WDATA ; 4
@@ -1024,16 +898,17 @@ op_tick_56:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
 
-    STY zpdummy ; 3 cycles !!!
-    BIT tick ; XXX off by one ; 5 !!! together these offset the STA dummy
+    STA dummy ; 4
+    BIT tick ; 4
 
+    ; used >3 pad cycles within tick loop; can't branch to tail
     NOP ; 2
 
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
@@ -1050,18 +925,18 @@ op_tick_58: ; repeats from op_tick_40
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
 
     STA dummy,X ; 5 !!!
     BIT tick ; XXX off by one ; 5 !!!
 
-    LDY WDATA ; 4
-    STY @D+1 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-; 4+(4+4+5+4+5+4+5+4+5+4+4+4+3+5)+2+4+3
+; 4+(4+4+5+4+5+4+5+4+5+4+4+4+4+4)+2+4+3
 op_tick_60:
     BIT tick ; 4
     LDA WDATA ; 4
@@ -1075,18 +950,20 @@ op_tick_60:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
 
-    STY zpdummy ; 3 !!!
-    BIT tick ; XXX off by one ; 5 !!!
+    STA dummy ; 4
+    BIT tick ; 4
 
+    ; used >3 pad cycles within tick loop; can't branch to tail
     NOP ; 2
-    STY @D+1 ; 4
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
+;4+(4+4+5+4+5+4+5+4+5+4+4+4+3+3+4)+4+3
 op_tick_62:
     BIT tick ; 4
     LDA WDATA ; 4
@@ -1094,25 +971,25 @@ op_tick_62:
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
-
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
 
-    STY zpdummy ; 3 !!!
-    NOP ; 2
-    BIT tick ; XXX off by one ; 5 !!!
-
-    STY @D+1 ; 4
+    STA zpdummy ; 3
+    STA zpdummy ; 3
+    BIT tick ; 4
+    
+    ; used >3 pad cycles within tick loop; can't branch to tail
+    STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 
-;4+(4+4+5+4+5+4+5+4+5+4+4+4+3+4+5)+2+3
+;4+(4+4+5+4+5+4+5+4+5+4+4+4+4+4+4)+2+3
 op_tick_64:
     BIT tick ; 4
     LDA WDATA ; 4
@@ -1126,18 +1003,19 @@ op_tick_64:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
+    STA dummy ; 4
 
-    STY zpdummy ; 3 !!!
-    STY @D+1 ; 4
-    BIT tick ; XXX off by one ; 5 !!!
+    BIT tick ; 4
     NOP ; 2
 
 @D:
     JMP op_nop ; 3
 
+; 4+(4+4+5+4+5+4+5+4+5+4+4+4+3+4+3+4)+3
 op_tick_66:
     BIT tick ; 4
     LDA WDATA ; 4
@@ -1151,14 +1029,14 @@ op_tick_66:
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
-    LDY WDATA ; 4
-    STY @D+2 ; 4
-    LDY WDATA ; 4
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
 
-    STY zpdummy ; 3 !!!
-    STY @D+1 ; 4
-    NOP ; 2
-    BIT tick ; XXX off by one ; 5 !!!
+    STA zpdummy ; 3
+    STA zpdummy ; 3
+    BIT tick ; 4
 
 @D:
     JMP op_nop ; 3
