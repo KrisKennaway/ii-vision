@@ -485,7 +485,7 @@ op_tick_12:
     STA zpdummy ; 3
     JMP _op_tick_tail_51 ; 3 + 51
 
-;4+(4+4+4+2+4)
+;4+(4+4+2+4)+3+52
 op_tick_14:
     BIT tick ; 4
     LDA WDATA ; 4
@@ -493,23 +493,7 @@ op_tick_14:
     NOP ; 2
     BIT tick ; 4
     
-    STA dummy ; 4
-
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDA WDATA ; 4
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+    JMP _op_tick_tail_52 ; 3+52
 
 op_tick_16:
     BIT tick ; 4
@@ -518,6 +502,8 @@ op_tick_16:
     STA dummy ; 4
     BIT tick ; 4
 
+    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; XXX can use LDX WDATA instead of STA dummy?  only if we no longer need X=0 invariant
     NOP ; 2
 
     STA $2000,Y ; 5
@@ -535,29 +521,17 @@ op_tick_16:
 @D:
     JMP op_nop ; 3
 
-op_tick_18:
+; 4 + (4+4+5+4)+3+3+46
+op_tick_18: ; XXX really tick_17
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     STA $2000,Y ; 5
     BIT tick ; 4 XXX off by one  - only 17 cycles
 
-    STA dummy,X ; 5 !!!
-
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDA WDATA ; 4
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
-
+    STA zpdummy ; 3
+    JMP _op_tick_tail_46 ; 3 + 46
+    
 ;4+(4+4+5+3+4)+3+46=73
 op_tick_20:
     BIT tick ; 4
@@ -569,8 +543,8 @@ op_tick_20:
     
     JMP _op_tick_tail_46
 
-; 4+(4+4+5+4+5)+5+5+4+5+4+5+4+4+4+4+3=73
-op_tick_22:
+; 4+(4+4+5+4+4)+3+3+42
+op_tick_22: ; XXX really tick_21
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -578,20 +552,8 @@ op_tick_22:
     LDY WDATA ; 4
     BIT tick ; 4 XXX off by one
 
-    STA dummy,X ; 5 !!!
-
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDA WDATA ; 4
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    STA zpdummy ; 3
+    JMP _op_tick_tail_42 ; 3 + 42
 
 ;4+(4+4+5+4+3+4)+3+42
 op_tick_24:
@@ -670,6 +632,7 @@ op_tick_34: ; repeats from op_tick_16
     STA dummy ; 4
     BIT tick ; 4
 
+    ; used >3 pad cycles within tick loop; can't branch to tail
     NOP ; 2
 
     STA $2000,Y ; 5
@@ -683,7 +646,8 @@ op_tick_34: ; repeats from op_tick_16
 @D:
     JMP op_nop ; 3
 
-op_tick_36: ; repeats from op_tick_18
+;4+(4+4+5+4+5+4+5+4)+3+3+28
+op_tick_36: ; repeats from op_tick_18 ; XXX really tick_35
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -694,17 +658,8 @@ op_tick_36: ; repeats from op_tick_18
     STA $2000,Y ; 5
     BIT tick ; 4 XXX off by one
 
-    STA dummy,X ; 5 !!!
-
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-
-    LDA WDATA ; 4
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    STA zpdummy
+    JMP _op_tick_tail_28
 
 ; 4 + (4+4+5+4+5+4+5+3+4)+3+28
 op_tick_38: ; repeats from op_tick_20
@@ -721,7 +676,8 @@ op_tick_38: ; repeats from op_tick_20
     
     JMP _op_tick_tail_28 ; 3 + 28
 
-op_tick_40: ; repeats from op_tick_22
+;4+(4+4+5+4+5+4+5+4+4)+3+3+24
+op_tick_40: ; repeats from op_tick_22 ; XXX really tick_41
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -731,18 +687,10 @@ op_tick_40: ; repeats from op_tick_22
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    BIT tick ; XXX off by one ; 5 !!!
+    BIT tick ; 4 XXX off by one
 
-    STA dummy,X ; 5 !!!
-
-    STA $2000,Y ; 5
-
-    LDA WDATA ; 4
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    STA zpdummy
+    JMP _op_tick_tail_24
 
 ;4+(4+4+5+4+5+4+5+4+3+4)+3+24
 op_tick_42: ; repeats from op_tick_24
@@ -832,6 +780,7 @@ op_tick_50: ; repeats from op_tick_32
     
     JMP _op_tick_tail_16
 
+;4+(4+4+5+4+5+4+5+4+5+4+4+4)+2+4+4+4+3
 op_tick_52: ; repeats from op_tick_34
     BIT tick ; 4
     LDA WDATA ; 4
@@ -912,7 +861,7 @@ op_tick_56:
 @D:
     JMP op_nop ; 3
 
-;4+(4+4+5+4+5+4+5+4+5+4+4+5+5)+4+4+3
+;4+(4+4+5+4+5+4+5+4+5+4+4+3+3+4)+4+4+3
 op_tick_58: ; repeats from op_tick_40
     BIT tick ; 4
     LDA WDATA ; 4
@@ -928,9 +877,11 @@ op_tick_58: ; repeats from op_tick_40
     LDA WDATA ; 4
     STA @D+2 ; 4
 
-    STA dummy,X ; 5 !!!
-    BIT tick ; XXX off by one ; 5 !!!
+    STA zpdummy ; 3
+    STA zpdummy ; 3
+    BIT tick ; 4
 
+    ; used >3 pad cycles within tick loop; can't branch to tail
     LDA WDATA ; 4
     STA @D+1 ; 4
 @D:
