@@ -8,7 +8,7 @@
 
 .include "apple2.inc"
 
-.org $8000
+.org $0800
 .proc main
 
 TICK = $c030
