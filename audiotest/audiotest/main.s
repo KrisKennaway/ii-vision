@@ -453,6 +453,8 @@ _op_tick_tail_16:
 _op_tick_tail_12:
     LDA WDATA ; 4
 _op_tick_tail_8:
+    ; NB: we use ,X indexing here to get an extra cycle.  This requires us to
+    ; maintain the invariant X=0 across opcode dispatch
     STA _op_tick_6_jmp+1,x ; 5
 _op_tick_6_jmp:
     JMP op_nop ; 3
@@ -495,42 +497,53 @@ op_tick_14:
     
     JMP _op_tick_tail_52 ; 3+52
 
+; 4+(4+4+4+4)+5+2+3+43
 op_tick_16:
     BIT tick ; 4
     LDA WDATA ; 4
+    ; This lets us share a common opcode tail; otherwise we need a STA dummy 4-cycle opcode
+    ; which doesn't leave enough to JMP with.
+    ; This temporarily violates X=0 invariant required by tick_6
+    LDX WDATA ; 4
     LDY WDATA ; 4
-    STA dummy ; 4
+    BIT tick ; 4
+    
+    STA $2000,x ; 5
+    LDX #$00 ; 2 restore X=0 invariant
+
+    JMP _op_tick_tail_43 ; 3 + 43
+
+; 4 + (4+4+4+2+4)+5+5+2+2+4+5+4+5+4+4+4+4+3
+op_tick_18:
+    BIT tick ; 4
+    LDA WDATA ; 4
+    LDY WDATA ; 4
+    ; lets us reorder the 5-cycle STA $2000,y outside of tick loop.
+    ; This temporarily violates X=0 invariant required by tick_6
+    LDX WDATA ; 4
+    NOP ; 2
     BIT tick ; 4
 
+    STA $2000,Y ; 5
+    STA $2000,X ; 5
+
+    LDX #$00 ; 2 restore X=0 invariant
+
     ; used >3 pad cycles within tick loop; can't branch to tail
-    ; XXX can use LDX WDATA instead of STA dummy?  only if we no longer need X=0 invariant
     NOP ; 2
-
-    STA $2000,Y ; 5
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
+    
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
     STA $2000,Y ; 5
 
+    ; vector to next opcode
     LDA WDATA ; 4
     STA @D+2 ; 4
     LDA WDATA ; 4
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
-
-; 4 + (4+4+5+4)+3+3+46
-op_tick_18: ; XXX really tick_17
-    BIT tick ; 4
-    LDA WDATA ; 4
-    LDY WDATA ; 4
-    STA $2000,Y ; 5
-    BIT tick ; 4 XXX off by one  - only 17 cycles
-
-    STA zpdummy ; 3
-    JMP _op_tick_tail_46 ; 3 + 46
     
 ;4+(4+4+5+3+4)+3+46=73
 op_tick_20:
@@ -550,7 +563,7 @@ op_tick_22: ; XXX really tick_21
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    BIT tick ; 4 XXX off by one
+    BIT tick ; 4
 
     STA zpdummy ; 3
     JMP _op_tick_tail_42 ; 3 + 42
@@ -646,8 +659,8 @@ op_tick_34: ; repeats from op_tick_16
 @D:
     JMP op_nop ; 3
 
-;4+(4+4+5+4+5+4+5+4)+3+3+28
-op_tick_36: ; repeats from op_tick_18 ; XXX really tick_35
+;4+(4+4+5+4+5+4+4+2+4)+5+5+2+2+4+4+4+4+3
+op_tick_36: ; repeats from op_tick_18
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -655,11 +668,22 @@ op_tick_36: ; repeats from op_tick_18 ; XXX really tick_35
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
-    BIT tick ; 4 XXX off by one
+    LDX WDATA ; 4
+    NOP ; 2
+    BIT tick ; 4
 
-    STA zpdummy
-    JMP _op_tick_tail_28
+    STA $2000,Y ; 5
+    STA $2000,X ; 5
+    LDX #$00 ; 2
+    NOP ; 2
+    ; used >3 pad cycles within tick loop and restoring invariant; can't branch to tail
+
+    LDA WDATA ; 4
+    STA @D+2 ; 4
+    LDA WDATA ; 4
+    STA @D+1 ; 4
+@D:
+    JMP op_nop ; 3
 
 ; 4 + (4+4+5+4+5+4+5+3+4)+3+28
 op_tick_38: ; repeats from op_tick_20
@@ -687,7 +711,7 @@ op_tick_40: ; repeats from op_tick_22 ; XXX really tick_41
     LDY WDATA ; 4
     STA $2000,Y ; 5
     LDY WDATA ; 4
-    BIT tick ; 4 XXX off by one
+    BIT tick ; 4
 
     STA zpdummy
     JMP _op_tick_tail_24
