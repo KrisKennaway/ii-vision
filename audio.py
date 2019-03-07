@@ -12,7 +12,7 @@ class Audio:
     def encode_audio(self, audio):
         for a in audio:
             a = max(-30, min(a * 2, 32)) + 34
-            page = random.randint(32, 49)
+            page = random.randint(32, 56)
             content = random.randint(0,255)
             offsets = [random.randint(0, 255) for _ in range(4)]
             yield opcodes.TICK_OPCODES[(a, page)](content, offsets)
