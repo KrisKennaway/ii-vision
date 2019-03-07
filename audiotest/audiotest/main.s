@@ -13,11 +13,15 @@
 
 TICK = $c030
 
+; some dummy addresses in order to pad cycle counts
 zpdummy = $00
 dummy = $ffff
 
 ; Write symbol table to object file
 .DEBUGINFO
+
+; allow using $page in labels
+.feature dollar_in_identifiers
 
 ; TCP SOCKET DEMO FOR W5100/UTHERNET II
 ; BY D. FINNIGAN
@@ -355,6 +359,7 @@ RECV:
     PLA
     ; fall through
     LDX #$00
+
 ;4 stores:
 ;- 73 cycles
 ;- 14364 Hz
@@ -376,8 +381,17 @@ op_nop:
 @D:
     JMP op_nop
 
+.macro ticklabel page, cycles_left
+    .concat ("_op_tick_page_", .string(page), "_tail_", .string(cycles_left))
+.endmacro
+
+.macro tickident page, cycles_left
+    .ident (.concat ("_op_tick_page_", .string(page), "_tail_", .string(cycles_left))):
+.endmacro
+
+.macro op_tick_4 page
 ;4+(4)+2+4+4+4+5+4+5+4+5+4+5+4+4+4+4+3=73
-op_tick_4:
+.ident (.concat ("op_tick_4_page_", .string(page))):
     BIT tick ; 4
     BIT tick ; 4
 
@@ -385,120 +399,134 @@ op_tick_4:
     STA zpdummy ; 3
 
     ; load content byte
-_op_tick_tail_59:
+tickident page, 59
     LDA WDATA ; 4
 
     ; 4 x offset stores
-_op_tick_tail_55:
+tickident page, 55
     LDY WDATA ; 4
-_op_tick_tail_51:
-    STA $2000,Y ; 5
-_op_tick_tail_46:
+tickident page, 51
+    STA page << 8,Y ; 5
+tickident page, 46
     LDY WDATA ; 4
-_op_tick_tail_42:
-    STA $2000,Y ; 5
-_op_tick_tail_37:
+tickident page, 42
+    STA page << 8,Y ; 5
+tickident page, 37
     LDY WDATA ; 4
-_op_tick_tail_33:
-    STA $2000,Y ; 5
-_op_tick_tail_28:
+tickident page, 33
+    STA page << 8,Y ; 5
+tickident page, 28
     LDY WDATA ; 4
-_op_tick_tail_24:
-    STA $2000,Y ; 5
+tickident page, 24
+    STA page << 8,Y ; 5
 
     ; vector to next opcode
-_op_tick_tail_19:
+tickident page, 19
     LDA WDATA ; 4
-_op_tick_tail_15:
-    STA _op_tick_4_jmp+2 ; 4
-_op_tick_tail_11:
+tickident page, 15
+    STA .ident(.concat ("_op_tick_4_page_", .string(page), "_jmp"))+2 ; 4
+tickident page, 11
     LDA WDATA ; 4
-_op_tick_tail_7:
-    STA _op_tick_4_jmp+1 ; 4
-_op_tick_4_jmp:
+tickident page, 7
+    STA .ident(.concat ("_op_tick_4_page_", .string(page), "_jmp"))+1 ; 4
+.ident(.concat ("_op_tick_4_page_", .string(page), "_jmp")):
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_6 page
+.ident (.concat ("op_tick_6_page_", .string(page))):
 ;4+(2+4)+3+4+4+5+4+5+4+5+4+5+4+4+4+5+3
-op_tick_6:
+
     BIT tick ; 4
     NOP ; 2
     BIT tick ; 4
 
     STA zpdummy ; 3
 
-_op_tick_tail_60:
+tickident page, 60
     LDA WDATA ; 4
 
-_op_tick_tail_56:
+tickident page, 56
     LDY WDATA ; 4
-_op_tick_tail_52:
-    STA $2000,Y ; 5
-_op_tick_tail_47:
+tickident page, 52
+    STA page << 8,Y ; 5
+tickident page, 47
     LDY WDATA ; 4
-_op_tick_tail_43:
-    STA $2000,Y ; 5
-_op_tick_tail_38:
+tickident page, 43
+    STA page << 8,Y ; 5
+tickident page, 38
     LDY WDATA ; 4
-_op_tick_tail_34:
-    STA $2000,Y ; 5
-_op_tick_tail_29:
+tickident page, 34
+    STA page << 8,Y ; 5
+tickident page, 29
     LDY WDATA ; 4
-_op_tick_tail_25:
-    STA $2000,Y ; 5
+tickident page, 25
+    STA page << 8,Y ; 5
 
-_op_tick_tail_20:
+tickident page, 20
     LDA WDATA ; 4
-_op_tick_tail_16:
-    STA _op_tick_6_jmp+2 ; 4
-_op_tick_tail_12:
+tickident page, 16
+    STA .ident(.concat ("_op_tick_6_page_", .string(page), "_jmp"))+2 ; 4
+tickident page, 12
     LDA WDATA ; 4
-_op_tick_tail_8:
+tickident page, 8
     ; NB: we use ,X indexing here to get an extra cycle.  This requires us to
     ; maintain the invariant X=0 across opcode dispatch
-    STA _op_tick_6_jmp+1,x ; 5
-_op_tick_6_jmp:
+    STA .ident(.concat ("_op_tick_6_page_", .string(page), "_jmp"))+1,x ; 5
+
+.ident (.concat ("_op_tick_6_page_", .string(page), "_jmp")):
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_8 page
 ;4+(4+4)+3+3+55
-op_tick_8:
+.ident (.concat ("op_tick_8_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     BIT tick ; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_55 ; 3 + 55
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_55")) ; 3 + 55
+.endmacro
 
+.macro op_tick_10 page
 ;4+(4+2+4)+3+56
-op_tick_10:
+.ident (.concat ("op_tick_10_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     NOP ; 2
     BIT tick ; 4
     
-    JMP _op_tick_tail_56 ; 3 + 56
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_56")) ; 3 + 56
+.endmacro
 
+.macro op_tick_12 page
 ;4+(4+4+4)+3+3+51
-op_tick_12:
+.ident (.concat ("op_tick_12_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     BIT tick ; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_51 ; 3 + 51
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_51")) ; 3 + 51
+.endmacro
 
+.macro op_tick_14 page
+.ident (.concat ("op_tick_14_page_", .string(page))):
 ;4+(4+4+2+4)+3+52
-op_tick_14:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
     NOP ; 2
     BIT tick ; 4
     
-    JMP _op_tick_tail_52 ; 3+52
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_52")) ; 3+52
+.endmacro
 
+.macro op_tick_16 page
+.ident (.concat ("op_tick_16_page_", .string(page))):
 ; 4+(4+4+4+4)+5+2+3+43
-op_tick_16:
     BIT tick ; 4
     LDA WDATA ; 4
     ; This lets us share a common opcode tail; otherwise we need a STA dummy 4-cycle opcode
@@ -508,24 +536,26 @@ op_tick_16:
     LDY WDATA ; 4
     BIT tick ; 4
     
-    STA $2000,x ; 5
+    STA page << 8,x ; 5
     LDX #$00 ; 2 restore X=0 invariant
 
-    JMP _op_tick_tail_43 ; 3 + 43
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_43")) ; 3 + 43
+.endmacro
 
+.macro op_tick_18 page
+.ident (.concat ("op_tick_18_page_", .string(page))):
 ; 4 + (4+4+4+2+4)+5+5+2+2+4+5+4+5+4+4+4+4+3
-op_tick_18:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    ; lets us reorder the 5-cycle STA $2000,y outside of tick loop.
+    ; lets us reorder the 5-cycle STA page << 8,y outside of tick loop.
     ; This temporarily violates X=0 invariant required by tick_6
     LDX WDATA ; 4
     NOP ; 2
     BIT tick ; 4
 
-    STA $2000,Y ; 5
-    STA $2000,X ; 5
+    STA page << 8,Y ; 5
+    STA page << 8,X ; 5
 
     LDX #$00 ; 2 restore X=0 invariant
 
@@ -533,9 +563,9 @@ op_tick_18:
     NOP ; 2
     
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     ; vector to next opcode
     LDA WDATA ; 4
@@ -544,103 +574,120 @@ op_tick_18:
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
-    
+.endmacro
+
+.macro op_tick_20 page
+.ident (.concat ("op_tick_20_page_", .string(page))):
 ;4+(4+4+5+3+4)+3+46=73
-op_tick_20:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     STA zpdummy ; 3
     BIT tick ; 4
     
-    JMP _op_tick_tail_46
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_46"))
+.endmacro
 
-; 4+(4+4+5+4+4)+3+3+42
-op_tick_22: ; XXX really tick_21
+.macro op_tick_22 page
+.ident (.concat ("op_tick_22_page_", .string(page))):
+; 4+(4+4+5+4+4)+3+3+42  XXX really tick_21
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     BIT tick ; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_42 ; 3 + 42
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_42")) ; 3 + 42
+.endmacro
 
+.macro op_tick_24 page
+.ident (.concat ("op_tick_24_page_", .string(page))):
 ;4+(4+4+5+4+3+4)+3+42
-op_tick_24:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     STA zpdummy ; 3
     BIT tick ; 4
     
-    JMP _op_tick_tail_42
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_42"))
+.endmacro
 
+.macro op_tick_26 page ; repeats from op_tick_8
+.ident (.concat ("op_tick_26_page_", .string(page))):
 ; 4+(4+4+5+4+5+4)+3+37
-op_tick_26: ; repeats from op_tick_8
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     BIT tick; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_37 ; 3 + 37
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_37")) ; 3 + 37
+.endmacro
 
+.macro op_tick_28 page ; repeats from op_tick_10
+.ident (.concat ("op_tick_28_page_", .string(page))):
 ; 4+(4+2+4+5+4+5+4)+3+38
-op_tick_28: ; repeats from op_tick_10
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     NOP ; 2
     BIT tick ; 4
 
-    JMP _op_tick_tail_38
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_38"))
+.endmacro
 
+.macro op_tick_30 page ; repeats from op_tick_12
+.ident (.concat ("op_tick_30_page_", .string(page))):
 ;4+(4+4+5+4+5+4+4)+3+3+33
-op_tick_30: ; repeats from op_tick_12
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     BIT tick ; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_33 ; 3 + 33
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_33")) ; 3 + 33
+.endmacro
 
+.macro op_tick_32 page ; repeats from op_tick_14
+.ident (.concat ("op_tick_32_page_", .string(page))):
 ;4+(4+4+5+4+5+4+2+4)+3+34
-op_tick_32: ; repeats from op_tick_14
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     NOP ; 2
     BIT tick ; 4
     
-    JMP _op_tick_tail_34
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_34"))
+.endmacro
 
-op_tick_34: ; repeats from op_tick_16
+.macro op_tick_34 page ; repeats from op_tick_16
+.ident (.concat ("op_tick_34_page_", .string(page))):
+; 4+(4+4+5+4+5+4)+3+37
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     STA dummy ; 4
     BIT tick ; 4
@@ -648,9 +695,9 @@ op_tick_34: ; repeats from op_tick_16
     ; used >3 pad cycles within tick loop; can't branch to tail
     NOP ; 2
 
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -658,22 +705,24 @@ op_tick_34: ; repeats from op_tick_16
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_36 page ; repeats from op_tick_18
+.ident (.concat ("op_tick_36_page_", .string(page))):
 ;4+(4+4+5+4+5+4+4+2+4)+5+5+2+2+4+4+4+4+3
-op_tick_36: ; repeats from op_tick_18
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     LDX WDATA ; 4
     NOP ; 2
     BIT tick ; 4
 
-    STA $2000,Y ; 5
-    STA $2000,X ; 5
+    STA page << 8,Y ; 5
+    STA page << 8,X ; 5
     LDX #$00 ; 2
     NOP ; 2
     ; used >3 pad cycles within tick loop and restoring invariant; can't branch to tail
@@ -684,138 +733,154 @@ op_tick_36: ; repeats from op_tick_18
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_38 page ; repeats from op_tick_20
+.ident (.concat ("op_tick_38_page_", .string(page))):
 ; 4 + (4+4+5+4+5+4+5+3+4)+3+28
-op_tick_38: ; repeats from op_tick_20
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     STA zpdummy ; 3
     BIT tick ; 4
     
-    JMP _op_tick_tail_28 ; 3 + 28
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_28")) ; 3 + 28
+.endmacro
 
+.macro op_tick_40 page ; repeats from op_tick_22 ; XXX really tick_41
+.ident (.concat ("op_tick_40_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+4)+3+3+24
-op_tick_40: ; repeats from op_tick_22 ; XXX really tick_41
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     BIT tick ; 4
 
     STA zpdummy
-    JMP _op_tick_tail_24
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_24"))
+.endmacro
 
+.macro op_tick_42 page ; repeats from op_tick_24
+.ident (.concat ("op_tick_42_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+3+4)+3+24
-op_tick_42: ; repeats from op_tick_24
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
     STA zpdummy ; 3
     BIT tick ; 4
     
-    JMP _op_tick_tail_24 ; 3 + 24
-    
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_24")) ; 3 + 24
+.endmacro
+
+.macro op_tick_44 page ; repeats from op_tick_26
+.ident (.concat ("op_tick_44_page_", .string(page))):
 ; 4 + (4+4+5+4+5+4+5+4+5+4)+3+3+19
-op_tick_44: ; repeats from op_tick_26
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     BIT tick; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_19 ; 3 + 19
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_19")) ; 3 + 19
+.endmacro
 
+.macro op_tick_46 page ; repeats from op_tick_28
+.ident (.concat ("op_tick_46_page_", .string(page))):
 ;4+(4+2+4+5+4+5+4+5+4+5+4)+3+20
-op_tick_46: ; repeats from op_tick_28
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     NOP ; 2
     BIT tick ; 4
 
-    JMP _op_tick_tail_20
-    
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_20"))
+    .endmacro
+
+.macro op_tick_48 page ; repeats from op_tick_30
+.ident (.concat ("op_tick_48_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4)+3+3+15
-op_tick_48: ; repeats from op_tick_30
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     BIT tick ; 4
 
     STA zpdummy ; 3
-    JMP _op_tick_tail_15 ; 3 + 15
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_15")) ; 3 + 15
+.endmacro
 
+.macro op_tick_50 page ; repeats from op_tick_32
+.ident (.concat ("op_tick_50_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+2+4)+3+16
-op_tick_50: ; repeats from op_tick_32
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     NOP ; 2
     BIT tick ; 4
     
-    JMP _op_tick_tail_16
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_16"))
+.endmacro
 
+.macro op_tick_52 page ; repeats from op_tick_34
+.ident (.concat ("op_tick_52_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4+4)+2+4+4+4+3
-op_tick_52: ; repeats from op_tick_34
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
 
@@ -830,19 +895,21 @@ op_tick_52: ; repeats from op_tick_34
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+    .endmacro
 
+.macro op_tick_54 page ; repeats from op_tick_36
+.ident (.concat ("op_tick_54_page_", .string(page))):
 ; 4 + (4+4+5+4+5+4+5+3+3+4+5+4+4)+4+4+4+3
-op_tick_54: ; repeats from op_tick_36
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     
@@ -857,19 +924,21 @@ op_tick_54: ; repeats from op_tick_36
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_56 page
+.ident (.concat ("op_tick_56_page_", .string(page))):
 ; 4+(4+4+5+4+5+4+5+4+5+4+4+4+4)+2+4+4+3
-op_tick_56:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -884,19 +953,21 @@ op_tick_56:
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_58 page ; repeats from op_tick_40
+.ident (.concat ("op_tick_58_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4+3+3+4)+4+4+3
-op_tick_58: ; repeats from op_tick_40
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -910,20 +981,22 @@ op_tick_58: ; repeats from op_tick_40
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_60 page
+.ident (.concat ("op_tick_60_page_", .string(page))):
 ; 4+(4+4+5+4+5+4+5+4+5+4+4+4+4+4)+2+4+3
-op_tick_60:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -937,19 +1010,21 @@ op_tick_60:
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_62 page
+.ident (.concat ("op_tick_62_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4+4+3+3+4)+4+3
-op_tick_62:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -963,20 +1038,22 @@ op_tick_62:
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_64 page
+.ident (.concat ("op_tick_64_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4+4+4+4+4)+2+3
-op_tick_64:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -989,20 +1066,22 @@ op_tick_64:
 
 @D:
     JMP op_nop ; 3
+.endmacro
 
+.macro op_tick_66 page ; repeats from op_tick_8
+.ident (.concat ("op_tick_66_page_", .string(page))):
 ; 4+(4+4+5+4+5+4+5+4+5+4+4+4+3+4+3+4)+3
-op_tick_66:
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA $2000,Y ; 5
+    STA page << 8,Y ; 5
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -1015,6 +1094,41 @@ op_tick_66:
 
 @D:
     JMP op_nop ; 3
+.endmacro
+
+op_tick_4 32
+op_tick_6 32
+op_tick_8 32
+op_tick_10 32
+op_tick_12 32
+op_tick_14 32
+op_tick_16 32
+op_tick_18 32
+op_tick_20 32
+op_tick_22 32
+op_tick_24 32
+op_tick_26 32
+op_tick_28 32
+op_tick_30 32
+op_tick_32 32
+op_tick_34 32
+op_tick_36 32
+op_tick_38 32
+op_tick_40 32
+op_tick_42 32
+op_tick_44 32
+op_tick_46 32
+op_tick_48 32
+op_tick_50 32
+op_tick_52 32
+op_tick_54 32
+op_tick_56 32
+op_tick_58 32
+op_tick_60 32
+op_tick_62 32
+op_tick_64 32
+op_tick_66 32
+
 
 op_ack:
 ; MOVE ADDRESS POINTER 1 page further in socket buffer
