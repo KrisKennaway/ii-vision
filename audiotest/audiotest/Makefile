@@ -39,7 +39,7 @@ PROJECT_TYPE = ca65
 
 # Uncomment and set this to your starting address in Apple II memory
 # if necessary:
-    START_ADDR = 800
+    START_ADDR = 4000
 
 # Set the default CPU to assemble for.  You can change this in the
 # body of a .s file using control commands like ".PC02".  Uncomment

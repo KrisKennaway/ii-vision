@@ -8,7 +8,7 @@
 
 .include "apple2.inc"
 
-.org $0800
+.org $4000
 .proc main
 
 TICK = $c030
@@ -19,9 +19,6 @@ dummy = $ffff
 
 ; Write symbol table to object file
 .DEBUGINFO
-
-; allow using $page in labels
-.feature dollar_in_identifiers
 
 ; TCP SOCKET DEMO FOR W5100/UTHERNET II
 ; BY D. FINNIGAN
@@ -1096,38 +1093,73 @@ tickident page, 8
     JMP op_nop ; 3
 .endmacro
 
-op_tick_4 32
-op_tick_6 32
-op_tick_8 32
-op_tick_10 32
-op_tick_12 32
-op_tick_14 32
-op_tick_16 32
-op_tick_18 32
-op_tick_20 32
-op_tick_22 32
-op_tick_24 32
-op_tick_26 32
-op_tick_28 32
-op_tick_30 32
-op_tick_32 32
-op_tick_34 32
-op_tick_36 32
-op_tick_38 32
-op_tick_40 32
-op_tick_42 32
-op_tick_44 32
-op_tick_46 32
-op_tick_48 32
-op_tick_50 32
-op_tick_52 32
-op_tick_54 32
-op_tick_56 32
-op_tick_58 32
-op_tick_60 32
-op_tick_62 32
-op_tick_64 32
-op_tick_66 32
+.macro op_tick page
+op_tick_4 page
+op_tick_6 page
+op_tick_8 page
+op_tick_10 page
+op_tick_12 page
+op_tick_14 page
+op_tick_16 page
+op_tick_18 page
+op_tick_20 page
+op_tick_22 page
+op_tick_24 page
+op_tick_26 page
+op_tick_28 page
+op_tick_30 page
+op_tick_32 page
+op_tick_34 page
+op_tick_36 page
+op_tick_38 page
+op_tick_40 page
+op_tick_42 page
+op_tick_44 page
+op_tick_46 page
+op_tick_48 page
+op_tick_50 page
+op_tick_52 page
+op_tick_54 page
+op_tick_56 page
+op_tick_58 page
+op_tick_60 page
+op_tick_62 page
+op_tick_64 page
+op_tick_66 page
+.endmacro
+
+op_tick 32
+op_tick 33
+op_tick 34
+op_tick 35
+op_tick 36
+op_tick 37
+op_tick 38
+op_tick 39
+op_tick 40
+op_tick 41
+op_tick 42
+op_tick 43
+op_tick 44
+op_tick 45
+op_tick 46
+op_tick 47
+op_tick 48
+op_tick 49
+;op_tick 50
+;op_tick 51
+;op_tick 52
+;op_tick 53
+;op_tick 54
+;op_tick 55
+;op_tick 56
+;op_tick 57
+;op_tick 58
+;op_tick 59
+;op_tick 60
+;op_tick 61
+;op_tick 62
+;op_tick 63
 
 
 op_ack:
