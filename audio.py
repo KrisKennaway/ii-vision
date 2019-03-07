@@ -9,23 +9,21 @@ import video
 
 
 class Audio:
-    def encode_audio(self, audio):
-        for a in audio:
-            a = max(-30, min(a * 2, 32)) + 34
-            page = random.randint(32, 56)
-            content = random.randint(0,255)
-            offsets = [random.randint(0, 255) for _ in range(4)]
-            yield opcodes.TICK_OPCODES[(a, page)](content, offsets)
+    def __init__(
+            self, filename: str, normalization: float = 1.0):
+        self.filename = filename
+        self.normalization = normalization
 
+        # TODO: take into account that the available range is slightly offset
+        # as fraction of total cycle count?
+        self._tick_range = [4, 66]
+        self.cycles_per_tick = 73
 
-def main():
-    filename = "Computer Chronicles - 06x05 - The Apple II.mp4"
+        # TODO: round to divisor of video frame rate
+        self.sample_rate = 14340  # int(1024. * 1024 / self.cycles_per_tick)
 
-    s = video.Video(frame_rate=None)
-    au = Audio()
-
-    with audioread.audio_open(filename) as f:
-        with open("out.bin", "wb") as out:
+    def audio_stream(self):
+        with audioread.audio_open(self.filename) as f:
             for buf in f.read_data(128 * 1024):
                 print(f.channels, f.samplerate, f.duration)
 
@@ -33,24 +31,29 @@ def main():
                     'float32').reshape((f.channels, -1), order='F')
 
                 a = librosa.core.to_mono(data)
-                a = librosa.resample(a, f.samplerate, 14000).flatten()
+                a = librosa.resample(a, f.samplerate,
+                                     self.sample_rate).flatten()
 
-                # Normalize to 95%ile
-                # norm = max(
-                #    abs(np.percentile(a, 5, axis=0)),
-                #    abs(np.percentile(a, 95, axis=0))
-                # )
-                # print(min(a),max(a))
-                # print(norm)
+                a /= 16384  # normalize to -1.0 .. 1.0
+                a *= self.normalization
 
-                # XXX how to estimate normalization without reading whole file?
-                norm = 12000
+                # Convert to -16 .. 16
+                a = (a * 16).astype(np.int)
+                a = np.clip(a, -15, 16)
 
-                a /= norm  # librosa.util.normalize(a)
-                a = (a * 32).astype(np.int)
+                yield from a
 
-                out.write(bytes(s.emit_stream(au.encode_audio(a))))
-    out.write(bytes(s.done()))
+
+def main():
+    filename = "Computer Chronicles - 06x05 - The Apple II.mp4"
+
+    s = video.Video(frame_rate=None)
+    au = Audio(filename, normalization=3)
+
+    with open("out.bin", "wb") as out:
+        for b in s.emit_stream(au.encode_audio()):
+            out.write(bytearray([b]))
+        out.write(bytes(s.done()))
 
 
 if __name__ == "__main__":

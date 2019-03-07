@@ -1,4 +1,6 @@
 import functools
+import heapq
+import random
 from typing import Iterator, Tuple, Iterable
 
 import numpy as np
@@ -72,9 +74,13 @@ class Video:
 
     CLOCK_SPEED = 1024 * 1024
 
-    def __init__(self, frame_rate: int = 15, screen_page: int = 1,
-                 opcode_scheduler: scheduler.OpcodeScheduler = None):
+    def __init__(
+            self,
+            frame_rate: int = 30,
+            screen_page: int = 1,
+            opcode_scheduler: scheduler.OpcodeScheduler = None):
         self.screen_page = screen_page
+        self.frame_rate = frame_rate
 
         # Initialize empty
         self.memory_map = screen.MemoryMap(
@@ -83,118 +89,17 @@ class Video:
         self.scheduler = (
                 opcode_scheduler or scheduler.HeuristicPageFirstScheduler())
 
-        self.cycle_counter = opcodes.CycleCounter()
-
         # Accumulates pending edit weights across frames
         self.update_priority = np.zeros((32, 256), dtype=np.int)
 
-        self.state = opcodes.State(
-            self.cycle_counter, self.memory_map, self.update_priority)
-
-        self.frame_rate = frame_rate
-        self.stream_pos = 0
-        if self.frame_rate:
-            self.cycles_per_frame = self.CLOCK_SPEED // self.frame_rate
-        else:
-            self.cycles_per_frame = None
-
-        self._last_op = opcodes.Nop()
 
     def encode_frame(self, target: screen.MemoryMap) -> Iterator[
         opcodes.Opcode]:
         """Update to match content of frame within provided budget.
 
-        Emits encoded byte stream for rendering the image.
-
-        XXX update
-
-        The byte stream consists of offsets against a selected page (e.g. $20xx)
-        at which to write a selected content byte.  Those selections are
-        controlled by special opcodes emitted to the stream
-
-        Opcodes:
-          SET_CONTENT - new byte to write to screen contents
-          SET_PAGE - set new page to offset against (e.g. $20xx)
-          TICK - tick the speaker
-          DONE - terminate the video decoding
-
-        We group by offsets from page boundary (cf some other more
-        optimal starting point) because STA (..),y has 1 extra cycle if
-        crossing the page boundary.  Though maybe this would be worthwhile if
-        it optimizes the bytestream.
         """
 
-        # TODO: changes should be a class
-        changes = self._index_changes(self.memory_map, target)
-
-        yield from self.scheduler.schedule(changes)
-
-    @functools.lru_cache()
-    def _rle_cycles(self, run_length):
-        return opcodes.RLE(0, run_length).cycles
-
-    def _index_page(self, bits_different, target_content):
-        byte_cycles = opcodes.Store(0).cycles
-
-        cur_content = None
-        run_length = 0
-        run = []
-
-        # Number of changes in run for which >0 bits differ
-        num_changes_in_run = 0
-
-        # Total weight of differences accumulated in run
-        total_update_priority_in_run = 0
-
-        def end_run():
-            # Decide if it's worth emitting as a run vs single stores
-            run_cost = self._rle_cycles(run_length)
-            single_cost = byte_cycles * num_changes_in_run
-            # print("Run of %d cheaper than %d singles" % (
-            #     run_length, num_changes_in_run))
-
-            if run_cost < single_cost:
-                start_offset = run[0][1]
-
-                # print("Found run of %d * %2x at %2x" % (
-                #     run_length, cur_content, offset - run_length)
-                #       )
-                # print(run)
-                yield (
-                    total_update_priority_in_run, start_offset, cur_content,
-                    run_length
-                )
-            else:
-                for ch in run:
-                    if ch[0]:
-                        yield ch
-
-        for offset in range(256):
-            bd = bits_different[offset]
-            tc = target_content[offset]
-            if run and cur_content != tc:
-                # End of run
-
-                yield from end_run()
-
-                run = []
-                run_length = 0
-                num_changes_in_run = 0
-                total_update_priority_in_run = 0
-                cur_content = tc
-
-            if cur_content is None:
-                cur_content = tc
-
-            run_length += 1
-            run.append((bd, offset, tc, 1))
-            if bd:
-                num_changes_in_run += 1
-                total_update_priority_in_run += bd
-
-        if run:
-            # End of run
-            yield from end_run()
+        yield from self._index_changes(self.memory_map, target)
 
     def _index_changes(
             self,
@@ -209,9 +114,13 @@ class Video:
         diff_weights = np.zeros((32, 256), dtype=np.uint8)
 
         it = np.nditer(
-            source.page_offset ^ target.page_offset,
-            flags=['multi_index'])
+            source.page_offset ^ target.page_offset, flags=['multi_index'])
         while not it.finished:
+            # If no diff, don't need to bother
+            if not it[0]:
+                it.iternext()
+                continue
+
             diff_weights[it.multi_index] = edit_weight(
                 source.page_offset[it.multi_index],
                 target.page_offset[it.multi_index],
@@ -225,51 +134,82 @@ class Video:
 
         self.update_priority += diff_weights
 
-        for page in range(32):
-            for change in self._index_page(
-                    self.update_priority[page], target.page_offset[page]):
-                (
-                    total_priority_in_run, start_offset, target_content,
-                    run_length
-                ) = change
+        # Iterate in descending order of update priority and emit tuples
+        # encoding (page, content, [offsets])
 
-                # TODO: handle screen page
-                yield (
-                    total_priority_in_run, page + 32, start_offset,
-                    target_content, run_length
+        priorities = []
+        it = np.nditer(self.update_priority, flags=['multi_index'])
+        while not it.finished:
+            priority = it[0]
+            if not priority:
+                it.iternext()
+                continue
+
+            page, offset = it.multi_index
+            # Don't use deterministic order for page, offset
+            nonce = random.randint(0,255)
+            heapq.heappush(priorities, (-priority, nonce, page, offset))
+            it.iternext()
+
+        while True:
+            priority, _, page, offset = heapq.heappop(priorities)
+            priority = -priority
+            if page > (56-32):
+                continue
+            offsets = [offset]
+            content = target.page_offset[page, offset]
+            #print("Priority %d: page %d offset %d content %d" % (
+            #    priority, page, offset, content))
+
+            # Clear priority for the offset we're emitting
+            self.update_priority[page, offset] = 0
+
+            # Need to find 3 more offsets to fill this opcode
+
+            # Minimize the update_priority delta that would result from
+            # emitting this offset
+
+            # Find offsets that would have largest reduction in diff weight
+            # with this content byte, then order by update priority
+            deltas = {}
+            for o, p in enumerate(self.update_priority[page]):
+                if p == 0:
+                    continue
+
+                # If we store content at this offset, what is the new
+                # edit_weight from this content byte to the target
+                delta = edit_weight(
+                    content,
+                    target.page_offset[page, o],
+                    o % 2 == 1
                 )
+                #print("Offset %d prio %d: %d -> %d = %d" % (
+                #    o, p, content,
+                #    target.page_offset[page, o],
+                #    delta
+                #))
+                deltas.setdefault(delta, list()).append((p, o))
 
-    def _emit_bytes(self, _op):
-        # print("%04X:" % self.stream_pos)
-        for b in self.state.emit(self._last_op, _op):
-            yield b
-            self.stream_pos += 1
-        self._last_op = _op
+            for d in sorted(deltas.keys()):
+                #print(d)
+                po = sorted(deltas[d], reverse=True)
+                #print(po)
+                for p, o in po:
+                    offsets.append(o)
+                    # Clear priority for the offset we're emitting
+                    self.update_priority[page, offset] = 0
+                    if len(offsets) == 4:
+                        break
+                if len(offsets) == 4:
+                    break
 
-    def emit_stream(self, ops: Iterable[opcodes.Opcode]) -> Iterator[int]:
-        self.cycle_counter.reset()
-        for op in ops:
-            # Keep track of where we are in TCP client socket buffer
-            socket_pos = self.stream_pos % 2048
-            if socket_pos >= 2045:
-                # May be about to emit a 3-byte opcode, pad out to last byte
-                # in frame
-                nops = 2047 - socket_pos
-                # print("At position %04x, padding with %d nops" % (
-                #    socket_pos, nops))
-                for _ in range(nops):
-                    yield from self._emit_bytes(opcodes.Nop())
-                yield from self._emit_bytes(opcodes.Ack())
-                # Ack falls through to nop
-                self._last_op = opcodes.Nop()
-            yield from self._emit_bytes(op)
+            # Pad to 4 if we didn't find anything
+            for _ in range(len(offsets), 4):
+                offsets.append(offsets[0])
 
-            if self.cycles_per_frame and (
-                    self.cycle_counter.cycles > self.cycles_per_frame):
-                print("Out of cycle budget")
-                return
-        # TODO: pad to cycles_per_frame with NOPs
+            #print("Page %d, content %d: offsets %s" % (page+32, content,
+            #                                           offsets))
+            yield (page+32, content, offsets)
 
-    def done(self) -> Iterator[int]:
-        """Terminate opcode stream."""
-        yield from self._emit_bytes(opcodes.Terminate())
+
+
