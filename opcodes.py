@@ -44,48 +44,21 @@ class State:
         self.cycle_counter.tick(opcode.cycles)
 
 
-class OpcodeCommand(enum.Enum):
-    STORE = 0x00
-    SET_CONTENT = 0xfb  # set new data byte to write
-    SET_PAGE = 0xfc
-    RLE = 0xfd
-    TICK = 0xfe  # tick speaker
-    TERMINATE = 0xff
-    NOP = 0xfa
-    ACK = 0xf9
-    TICK_4 = 4
-    TICK_6 = 6
-    TICK_8 = 8
-    TICK_10 = 10
-    TICK_12 = 12
-    TICK_14 = 14
-    TICK_16 = 16
-    TICK_18 = 18
-    TICK_20 = 20
-    TICK_22 = 22
-    TICK_24 = 24
-    TICK_26 = 26
-    TICK_28 = 28
-    TICK_30 = 30
-    TICK_32 = 32
-    TICK_34 = 34
-    TICK_36 = 36
-    TICK_38 = 38
-    TICK_40 = 40
-    TICK_42 = 42
-    TICK_44 = 44
-    TICK_46 = 46
-    TICK_48 = 48
-    TICK_50 = 50
-    TICK_52 = 52
-    TICK_54 = 54
-    TICK_56 = 56
-    TICK_58 = 58
-    TICK_60 = 60
-    TICK_62 = 62
-    TICK_64 = 64
-    TICK_66 = 66
+_op_cmds = [
+    "STORE",
+    "SET_CONTENT",  # # set new data byte to write
+    "SET_PAGE",
+    "RLE",
+    "TICK",
+    "TERMINATE",
+    "NOP",
+    "ACK",
+]
+for tick in range(4, 68, 2):
+    for page in range(32, 64):
+        _op_cmds.append("TICK_%d_PAGE_%d" % (tick, page))
 
+OpcodeCommand = enum.Enum("OpcodeCommand", _op_cmds)
 
 
 class Opcode:
@@ -126,7 +99,7 @@ class Opcode:
             offset = (opcode._START - last_opcode._END - 1) & 0xff
 
             # print("%s -> %s = %02x" % (last_opcode, opcode, offset))
-            #yield offset
+            yield offset
         else:
             yield opcode._START >> 8
             yield opcode._START & 0xff
@@ -302,145 +275,32 @@ class Ack(Opcode):
 class BaseTick(Opcode):
     _CYCLES = 73
 
+    def __init__(self, content: int, offsets: Tuple):
+        self.content = content
+        if len(offsets) != 4:
+            raise ValueError("Wrong number of offsets: %d != 4" % len(offsets))
+        self.offsets = offsets
+
     def __data_eq__(self, other):
-        return True
+        return self.content == other.content and self.offsets == other.offsets
 
     def emit_data(self):
-        yield 0xff  # content
-        yield 0x00  # offset 1
-        yield 0x00  # offset 1
-        yield 0x00  # offset 1
-        yield 0x00  # offset 1
-
-
-class Tick4(BaseTick):
-    COMMAND = OpcodeCommand.TICK_4
-
-
-class Tick6(BaseTick):
-    COMMAND = OpcodeCommand.TICK_6
-
-
-class Tick8(BaseTick):
-    COMMAND = OpcodeCommand.TICK_8
-
-
-class Tick10(BaseTick):
-    COMMAND = OpcodeCommand.TICK_10
-
-
-class Tick12(BaseTick):
-    COMMAND = OpcodeCommand.TICK_12
-
-
-class Tick14(BaseTick):
-    COMMAND = OpcodeCommand.TICK_14
-
-
-class Tick16(BaseTick):
-    COMMAND = OpcodeCommand.TICK_16
-
-
-class Tick18(BaseTick):
-    COMMAND = OpcodeCommand.TICK_18
-
-
-class Tick20(BaseTick):
-    COMMAND = OpcodeCommand.TICK_20
-
-
-class Tick22(BaseTick):
-    COMMAND = OpcodeCommand.TICK_22
-
-
-class Tick24(BaseTick):
-    COMMAND = OpcodeCommand.TICK_24
-
-
-class Tick26(BaseTick):
-    COMMAND = OpcodeCommand.TICK_26
-
-
-class Tick28(BaseTick):
-    COMMAND = OpcodeCommand.TICK_28
-
-
-class Tick30(BaseTick):
-    COMMAND = OpcodeCommand.TICK_30
-
-
-class Tick32(BaseTick):
-    COMMAND = OpcodeCommand.TICK_32
-
-
-class Tick34(BaseTick):
-    COMMAND = OpcodeCommand.TICK_34
-
-
-class Tick36(BaseTick):
-    COMMAND = OpcodeCommand.TICK_36
-
-
-class Tick38(BaseTick):
-    COMMAND = OpcodeCommand.TICK_38
-
-
-class Tick40(BaseTick):
-    COMMAND = OpcodeCommand.TICK_40
-
-
-class Tick42(BaseTick):
-    COMMAND = OpcodeCommand.TICK_42
-
-
-class Tick44(BaseTick):
-    COMMAND = OpcodeCommand.TICK_44
-
-
-class Tick46(BaseTick):
-    COMMAND = OpcodeCommand.TICK_46
-
-
-class Tick48(BaseTick):
-    COMMAND = OpcodeCommand.TICK_48
-
-
-class Tick50(BaseTick):
-    COMMAND = OpcodeCommand.TICK_50
-
-
-class Tick52(BaseTick):
-    COMMAND = OpcodeCommand.TICK_52
-
-
-class Tick54(BaseTick):
-    COMMAND = OpcodeCommand.TICK_54
-
-
-class Tick56(BaseTick):
-    COMMAND = OpcodeCommand.TICK_56
-
-
-class Tick58(BaseTick):
-    COMMAND = OpcodeCommand.TICK_58
-
-
-class Tick60(BaseTick):
-    COMMAND = OpcodeCommand.TICK_60
-
-
-class Tick62(BaseTick):
-    COMMAND = OpcodeCommand.TICK_62
-
-
-class Tick64(BaseTick):
-    COMMAND = OpcodeCommand.TICK_64
-
-
-class Tick66(BaseTick):
-    COMMAND = OpcodeCommand.TICK_66
-
-
+        yield self.content  # content
+        yield from self.offsets
+
+
+TICK_OPCODES = {}
+
+for _tick in range(4, 68, 2):
+    for _page in range(32, 64):
+        cls = type(
+            "Tick%dPage%d" % (_tick, _page),
+            (BaseTick,),
+            {
+                "COMMAND": OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
+            }
+        )
+        TICK_OPCODES[(_tick, _page)] = cls
 
 
 def _ParseSymbolTable():
@@ -484,47 +344,20 @@ def _FillOpcodeAddresses():
 
 _OPCODE_ADDRS = _ParseSymbolTable()
 _OPCODE_CLASSES = {
-#    OpcodeCommand.STORE: Store,
-#    OpcodeCommand.SET_CONTENT: SetContent,
-#    OpcodeCommand.SET_PAGE: SetPage,
-#    OpcodeCommand.RLE: RLE,
-#    OpcodeCommand.TICK: Tick,
-#    OpcodeCommand.TERMINATE: Terminate,
+    #    OpcodeCommand.STORE: Store,
+    #    OpcodeCommand.SET_CONTENT: SetContent,
+    #    OpcodeCommand.SET_PAGE: SetPage,
+    #    OpcodeCommand.RLE: RLE,
+    #    OpcodeCommand.TICK: Tick,
+    #    OpcodeCommand.TERMINATE: Terminate,
     OpcodeCommand.NOP: Nop,
     OpcodeCommand.ACK: Ack,
-    OpcodeCommand.TICK_4: Tick4,
-    OpcodeCommand.TICK_6: Tick6,
-    OpcodeCommand.TICK_8: Tick8,
-    OpcodeCommand.TICK_10: Tick10,
-    OpcodeCommand.TICK_12: Tick12,
-    OpcodeCommand.TICK_14: Tick14,
-    OpcodeCommand.TICK_16: Tick16,
-    OpcodeCommand.TICK_18: Tick18,
-    OpcodeCommand.TICK_20: Tick20,
-    OpcodeCommand.TICK_22: Tick22,
-    OpcodeCommand.TICK_24: Tick24,
-    OpcodeCommand.TICK_26: Tick26,
-    OpcodeCommand.TICK_28: Tick28,
-    OpcodeCommand.TICK_30: Tick30,
-    OpcodeCommand.TICK_32: Tick32,
-    OpcodeCommand.TICK_34: Tick34,
-    OpcodeCommand.TICK_36: Tick36,
-    OpcodeCommand.TICK_38: Tick38,
-    OpcodeCommand.TICK_40: Tick40,
-    OpcodeCommand.TICK_42: Tick42,
-    OpcodeCommand.TICK_44: Tick44,
-    OpcodeCommand.TICK_46: Tick46,
-    OpcodeCommand.TICK_48: Tick48,
-    OpcodeCommand.TICK_50: Tick50,
-    OpcodeCommand.TICK_52: Tick52,
-    OpcodeCommand.TICK_54: Tick54,
-    OpcodeCommand.TICK_56: Tick56,
-    OpcodeCommand.TICK_58: Tick58,
-    OpcodeCommand.TICK_60: Tick60,
-    OpcodeCommand.TICK_62: Tick62,
-    OpcodeCommand.TICK_64: Tick64,
-    OpcodeCommand.TICK_66: Tick66,
 }
+
+for _tick in range(4, 68, 2):
+    for _page in range(32, 64):
+        _tickop = OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
+        _OPCODE_CLASSES[_tickop] = TICK_OPCODES[(_tick, _page)]
 _FillOpcodeAddresses()
 
 

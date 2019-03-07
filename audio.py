@@ -1,3 +1,5 @@
+import random
+
 import numpy as np
 import audioread
 import librosa
@@ -5,47 +7,15 @@ import librosa
 import opcodes
 import video
 
-TICKS = {
-    4: opcodes.Tick4,
-    6: opcodes.Tick6,
-    8: opcodes.Tick8,
-    10: opcodes.Tick10,
-    12: opcodes.Tick12,
-    14: opcodes.Tick14,
-    16: opcodes.Tick16,
-    18: opcodes.Tick18,
-    20: opcodes.Tick20,
-    22: opcodes.Tick22,
-    24: opcodes.Tick24,
-    26: opcodes.Tick26,
-    28: opcodes.Tick28,
-    30: opcodes.Tick30,
-    32: opcodes.Tick32,
-    34: opcodes.Tick34,
-    36: opcodes.Tick36,
-    38: opcodes.Tick38,
-    40: opcodes.Tick40,
-    42: opcodes.Tick42,
-    44: opcodes.Tick44,
-    46: opcodes.Tick46,
-    48: opcodes.Tick48,
-    50: opcodes.Tick50,
-    52: opcodes.Tick52,
-    54: opcodes.Tick54,
-    56: opcodes.Tick56,
-    58: opcodes.Tick58,
-    60: opcodes.Tick60,
-    62: opcodes.Tick62,
-    64: opcodes.Tick64,
-    66: opcodes.Tick66,
-}
-
 
 class Audio:
     def encode_audio(self, audio):
         for a in audio:
             a = max(-30, min(a * 2, 32)) + 34
-            yield TICKS[a]()
+            page = random.randint(32, 49)
+            content = random.randint(0,255)
+            offsets = [random.randint(0, 255) for _ in range(4)]
+            yield opcodes.TICK_OPCODES[(a, page)](content, offsets)
 
 
 def main():
