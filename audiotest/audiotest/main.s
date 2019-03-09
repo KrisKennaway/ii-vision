@@ -8,7 +8,6 @@
 
 .include "apple2.inc"
 
-.org $4000
 .proc main
 
 TICK = $c030
@@ -115,6 +114,10 @@ FADDR:    .byte   $C0,$A8,$01,15   ; 192.168.2.1   FOREIGN IP
 FPORT:    .byte   $4E,$20       ; 20000 FOREIGN PORT
 MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
 
+.segment "LOWCODE"
+    JMP RESET
+
+.segment "CODE"
 RESET:
     LDA #$80    ; reset
     STA WMODE
@@ -861,7 +864,7 @@ tickident page, 8
     LDA WDATA ; 4
     NOP ; 2
     BIT tick ; 4
-    
+
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_16"))
 .endmacro
 
@@ -1128,11 +1131,14 @@ op_tick_64 page
 op_tick_66 page
 .endmacro
 
+.segment "LOWCODE"
 op_tick 32
 op_tick 33
 op_tick 34
 op_tick 35
 op_tick 36
+
+.segment "CODE"
 op_tick 37
 op_tick 38
 op_tick 39
@@ -1153,11 +1159,11 @@ op_tick 53
 op_tick 54
 op_tick 55
 op_tick 56
-;op_tick 57
-;op_tick 58
-;op_tick 59
-;op_tick 60
-;op_tick 61
+op_tick 57
+op_tick 58
+op_tick 59
+op_tick 60
+op_tick 61
 ;op_tick 62
 ;op_tick 63
 

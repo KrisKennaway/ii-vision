@@ -22,12 +22,12 @@ PGM=audio
 #    MACHINE = apple2
 #    MACHINE = apple2-dos33
 #    MACHINE = apple2-system
-#    MACHINE = apple2-loader
+    MACHINE = apple2-loader
 #    MACHINE = apple2-reboot
 #    MACHINE = apple2enh
 #    MACHINE = apple2enh-dos33
 #    MACHINE = apple2enh-system
-    MACHINE = apple2enh-loader
+#    MACHINE = apple2enh-loader
 #    MACHINE = apple2enh-reboot
 
 # Uncomment the appropriate project type.  If your entry point is
@@ -39,7 +39,7 @@ PROJECT_TYPE = ca65
 
 # Uncomment and set this to your starting address in Apple II memory
 # if necessary:
-    START_ADDR = 4000
+    START_ADDR = 800
 
 # Set the default CPU to assemble for.  You can change this in the
 # body of a .s file using control commands like ".PC02".  Uncomment

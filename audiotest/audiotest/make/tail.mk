@@ -56,7 +56,7 @@ ifeq ($(BUILD_TYPE),cc65)
             MACHCONFIG += -C $(BASE_MACHINE)-system.cfg
         else
             ifeq ($(PROJECT_TYPE),ca65)
-                MACHCONFIG += -C $(BASE_MACHINE)-asm.cfg
+                MACHCONFIG += -C $(BASE_MACHINE)-asm-hgr.cfg
                 LDFLAGS += -u __EXEHDR__
             else
                 MACHCONFIG += -C $(BASE_MACHINE).cfg
