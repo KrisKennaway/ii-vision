@@ -1,0 +1,373 @@
+#!/bin/sh
+
+merlinStartAddr() {
+    awk '$1 ~ /^[oO][rR][gG]$/{print $2}' linkscript.s | sed 's/^[0$]*//'
+}
+
+
+if [ $# -lt 5 ]
+then
+    echo USAGE: $0 '<AppleCommander> <machine> <diskimage> <binary>'
+    exit 1
+fi
+
+if [ -z "$JAVA" ]
+then
+    for item in "/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home" /Library/Java/JavaVirtualMachines/*/Contents/Home /usr
+    do
+        if [ -x "$item/bin/java" ]
+        then
+            JAVA="$item/bin/java"
+            break
+        fi
+    done
+fi
+
+if [ -z "$JAVA" ]
+then
+    echo Cannot find a path to a Java runtime.
+    echo Go to https://java.com/download if you do not have Java.
+    echo If you do have Java, you may need to uncomment the JAVA
+    echo line in the Makefile and set it to the path for your
+    echo Java runtime binary.
+    exit 1
+fi
+
+APPLECOMMANDER=$1
+shift
+
+MACHINE=$1
+shift
+
+DISKIMAGE=$1
+shift
+
+PROGRAM=$1
+shift
+
+STARTADDR=`echo $1 | sed 's/^0*//'`
+shift
+
+SOURCEFILE=$PROGRAM
+
+case "$MACHINE" in
+    apple2)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=1
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2enh)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=1
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2-dos33)
+        TEMPLATE="make/dos33_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="B"
+        BASICFILETYPE="A"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=30
+        ;;
+
+    apple2enh-dos33)
+        TEMPLATE="make/dos33_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="B"
+        BASICFILETYPE="A"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=30
+        ;;
+
+    apple2-system)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=1
+        RENAMELOADER=0
+        DELETEBASIC=1
+        COPYBINARY=1
+        HASHEADER=0
+        FILETYPE="sys"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`.system
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2enh-system)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=1
+        RENAMELOADER=0
+        DELETEBASIC=1
+        COPYBINARY=1
+        HASHEADER=0
+        FILETYPE="sys"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`.system
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2-loader)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=1
+        DELETEBASIC=1
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2-reboot)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=1
+        DELETEBASIC=1
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2enh-loader)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=1
+        DELETEBASIC=1
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2enh-reboot)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=1
+        DELETEBASIC=1
+        COPYBINARY=1
+        HASHEADER=1
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2-basic)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=1
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=0
+        FILETYPE="bas"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        SOURCEFILE=${PROGRAM}.tok
+        MAXFILENAMELEN=15
+        ;;
+
+    apple2-dos33-basic)
+        TEMPLATE="make/dos33_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=0
+        FILETYPE="A"
+        BASICFILETYPE="A"
+        TARGETFILE=`basename $PROGRAM`
+        SOURCEFILE=${PROGRAM}.tok
+        MAXFILENAMELEN=30
+        ;;
+
+    apple2-merlin)
+        TEMPLATE="make/prodos_template.dsk"
+        DELETELOADER=1
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=1
+        HASHEADER=0
+        FILETYPE="bin"
+        BASICFILETYPE="bas"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=15
+
+        STARTADDR=`merlinStartAddr`
+        ;;
+
+    apple2-dos33-merlin)
+        TEMPLATE="make/dos33_template.dsk"
+        DELETELOADER=0
+        RENAMELOADER=0
+        DELETEBASIC=0
+        COPYBINARY=1
+        HASHEADER=0
+        FILETYPE="B"
+        BASICFILETYPE="A"
+        TARGETFILE=`basename $PROGRAM`
+        MAXFILENAMELEN=30
+
+        STARTADDR=`merlinStartAddr`
+        ;;
+
+    *)
+        echo "Invalid machine type $MACHINE"
+        exit 1
+        ;;
+esac
+
+STARTARG=""
+if [ ! -z "$STARTADDR" ]
+then
+    STARTARG="0x$STARTADDR"
+fi
+
+if [ ! -f "$SOURCEFILE" ]
+then
+    echo "Cannot file executable $SOURCEFILE"
+    exit 1
+fi
+
+
+if [ ${#TARGETFILE} -gt $MAXFILENAMELEN ]
+then
+    echo "The filename $TARGETFILE exceeds the max name length of the filesystem ($MAXFILENAMELEN)"
+    exit 1
+fi
+
+if [ ! -f "$TEMPLATE" ]
+then
+    echo "Cannot file template disk image $TEMPLATE"
+    exit 1
+fi
+
+cp "$TEMPLATE" "$DISKIMAGE"
+
+if [ $DELETELOADER -eq 1 ]
+then
+    "$JAVA" -jar "$APPLECOMMANDER" -d "$DISKIMAGE" LOADER.SYSTEM
+fi
+
+if [ $RENAMELOADER -eq 1 ]
+then
+    LOADERFILE=${TARGETFILE}.system
+    if [ ${#LOADERFILE} -gt $MAXFILENAMELEN ]
+    then
+        echo "The filename $LOADERFILE exceeds the max name length of the filesystem ($MAXFILENAMELEN)"
+        rm -f "$DISKIMAGE"
+        exit 1
+    fi
+    "$JAVA" -jar "$APPLECOMMANDER" -g "$DISKIMAGE" LOADER.SYSTEM | "$JAVA" -jar "$APPLECOMMANDER" -p "$DISKIMAGE" "$LOADERFILE" sys
+    "$JAVA" -jar "$APPLECOMMANDER" -d "$DISKIMAGE" LOADER.SYSTEM
+fi
+
+if [ $DELETEBASIC -eq 1 ]
+then
+    "$JAVA" -jar "$APPLECOMMANDER" -d "$DISKIMAGE" BASIC.SYSTEM
+fi
+
+if [ $COPYBINARY -eq 1 ]
+then
+    if [ "$CC65_SUPPORTS_APPLE_SINGLE" -eq 1 ]
+    then
+        "$JAVA" -jar "$APPLECOMMANDER" -as "$DISKIMAGE" "$TARGETFILE" < "$SOURCEFILE"
+    elif [ $HASHEADER -eq 1 ]
+    then
+        HDR_STARTADDR=`od -t x2 -N 2 < "$SOURCEFILE" | head -1 | awk '{print $2}' | sed 's/^0*//'`
+        if [ "$HDR_STARTADDR" = "$STARTADDR" ]
+        then
+            dd if="$SOURCEFILE" bs=4 skip=1 | "$JAVA" -jar "$APPLECOMMANDER" -p "$DISKIMAGE" "$TARGETFILE" $FILETYPE $STARTARG
+        else
+            "$JAVA" -jar "$APPLECOMMANDER" -p "$DISKIMAGE" "$TARGETFILE" $FILETYPE $STARTARG < "$SOURCEFILE"
+        fi
+    else
+        "$JAVA" -jar "$APPLECOMMANDER" -p "$DISKIMAGE" "$TARGETFILE" $FILETYPE $STARTARG < "$SOURCEFILE"
+    fi
+fi
+
+for ITEM in $*
+do
+    # If this is a file matching *.tok, then this is an Applesoft BASIC file
+    # to copy to the disk image.
+    if [ -f "$ITEM" ] && echo "$ITEM" | grep '\.tok$' > /dev/null
+    then
+        DESTFILE=`echo "$ITEM" | sed 's/\.tok$//'`
+        "$JAVA" -jar "$APPLECOMMANDER" -p "$DISKIMAGE" "$DESTFILE" "$BASICFILETYPE" 0x801 < "$ITEM"
+        continue
+    fi
+
+    if [ ! -d "$ITEM" ]
+    then
+        echo Unable to find directory $ITEM
+        exit 1
+    fi
+
+    OLDPWD=`pwd`
+    cd $ITEM
+
+    find . -type f -print | while read FILE
+    do
+        TRANSFERARG=-p
+        FILETYPE=bin
+        DESTFILE=`echo $FILE | sed 's/^\.\///'`
+
+        if echo $FILE | egrep '\.as$' > /dev/null
+        then
+            # If the file ends with .as, this means the input is AppleSingle format.
+            # Strip the .as from the end of the file name and set the args to do
+            # an AppleSingle transfer.
+            TRANSFERARG=-as
+            FILETYPE=""
+            DESTFILE=`echo $DESTFILE | sed 's/\.as$//'`
+        elif echo $FILE | egrep '\.[ABITSRab]$' > /dev/null
+        then
+            # If the file ends with a single character DOS 3.3 file type, then use
+            # that as the file type.
+            FILETYPE=`echo $DESTFILE | awk -F. '{print $NF}'`
+            DESTFILE=`echo $DESTFILE | sed 's/\.[ABITSRab]$//'`
+        elif echo $FILE | egrep '\.[a-zA-Z][a-zA-Z][a-zA-Z]$' > /dev/null
+        then
+            # If the file ends with a three letter extension, use that as
+            # the file type.
+            FILETYPE=`echo $DESTFILE | awk -F. '{print $NF}'`
+            DESTFILE=`echo $DESTFILE | sed 's/\.[a-zA-Z][a-zA-Z][a-zA-Z]$//'`
+        fi
+
+        # If the file type is text, convert the line feeds to carriage return
+        if [ $FILETYPE = txt ] || [ $FILETYPE = T ]
+        then
+            tr '\n' '\r' < $FILE | "$JAVA" -jar "$OLDPWD/$APPLECOMMANDER" $TRANSFERARG "$OLDPWD/$DISKIMAGE" "$DESTFILE" $FILETYPE
+        else
+            "$JAVA" -jar "$OLDPWD/$APPLECOMMANDER" $TRANSFERARG "$OLDPWD/$DISKIMAGE" "$DESTFILE" $FILETYPE < $FILE
+        fi
+    done
+
+    cd "$OLDPWD"
+done

@@ -1,0 +1,34 @@
+#!/bin/sh
+
+if [ -z "$JAVA" ]
+then
+    for item in "/Library/Internet Plug-Ins/JavaAppletPlugin.plugin/Contents/Home" /Library/Java/JavaVirtualMachines/*/Contents/Home /usr
+    do
+        if [ -x "$item/bin/java" ]
+        then
+            JAVA="$item/bin/java"
+            break
+        fi
+    done
+fi
+
+if [ -z "$JAVA" ]
+then
+    echo Cannot find a path to a Java runtime.
+    echo Go to https://java.com/download if you do not have Java.
+    echo If you do have Java, you may need to uncomment the JAVA
+    echo line in the Makefile and set it to the path for your
+    echo Java runtime binary.
+    exit 1
+fi
+
+INPUTFILE=$1
+shift
+
+tr -d '©' < "$INPUTFILE" > /tmp/bt_filtered.$$
+
+"$JAVA" -jar make/bastokenizer-tools-bt-0.2.0.jar $* /tmp/bt_filtered.$$
+RESULT=$?
+
+rm /tmp/bt_filtered.$$
+exit $RESULT
