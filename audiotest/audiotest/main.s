@@ -279,15 +279,15 @@ CHECKRECV:
 ;    JMP CLOSECONN ; CLOSE CONNECTION
 
 ;@NEXT:
-    BIT tick
+    BIT tick ; 4
 
-    LDA #<S0RXRSR ; S0 RECEIVED SIZE REGISTER
-    STA WADRL
-    LDA WDATA       ; HIGH BYTE OF RECEIVED SIZE
-    ORA WDATA       ; LOW BYTE
-    BEQ NORECV      ; NO DATA TO READ
+    LDA #<S0RXRSR ; 2 S0 RECEIVED SIZE REGISTER
+    STA WADRL ; 4
+    LDA WDATA       ; 4 HIGH BYTE OF RECEIVED SIZE
+    ORA WDATA       ; 4 LOW BYTE
+    BEQ NORECV      ; 2 NO DATA TO READ
 
-    JMP RECV        ; THERE IS DATA
+    JMP RECV        ; 3 THERE IS DATA
 
 NORECV:
     ; XXX needed?
@@ -300,17 +300,18 @@ NORECV:
 ; THERE IS DATA TO READ - COMPUTE THE PHYSICAL ADDRESS
 
 RECV:
-    LDA #<S0RXRSR ; GET RECEIVED SIZE AGAIN
-    STA WADRL
-    LDA WDATA
-    BIT tick
-    
-    CMP #$10 ; expect at least 4k
-    bcc CHECKRECV ; not yet
+    LDA #<S0RXRSR ; 2 GET RECEIVED SIZE AGAIN
+    STA WADRL ; 4
+    LDA WDATA ; 4
 
-    STA GETSIZE+1
-    LDA WDATA
-    STA GETSIZE ; low byte XXX should be 0
+    CMP #$10 ; 2 expect at least 4k
+    bcc CHECKRECV ; 2 not yet
+
+    BIT tick ; 4 (37)
+
+    STA GETSIZE+1 ; 4
+    LDA WDATA ; 4
+    STA GETSIZE ; 4 low byte XXX should be 0
 
 
 
@@ -318,47 +319,49 @@ RECV:
 
 ; reset address pointer to socket buffer
 ; CALCULATE OFFSET ADDRESS USING READ POINTER AND RX MASK
-    LDA #<S0RXRD
-    STA WADRL
+    LDA #<S0RXRD ; 2
+    STA WADRL ; 4
 
-    LDA WDATA ; HIGH BYTE
-    AND #>RXMASK
-    STA GETOFFSET+1
-    LDA WDATA ; LOW BYTE
+    LDA WDATA ; 4 HIGH BYTE
+    AND #>RXMASK ; 2
+    STA GETOFFSET+1 ; 4
+    LDA WDATA ; 4 LOW BYTE
     ; why is this not 0?
     ;BEQ @L    ; XXX assert 0
     ;BRK
 @L:
-    AND #<RXMASK
+    BIT tick ; 4(36)
+    AND #<RXMASK ; 2
 
-    STA GETOFFSET
+    STA GETOFFSET ; 4
 
 
 ; CALCULATE PHYSICAL ADDRESS WITHIN W5100 RX BUFFER
-    BIT tick
 
-    CLC
-    LDA GETOFFSET
-    ADC #<RXBASE
-    STA GETSTARTADR
+    CLC ; 2
+    LDA GETOFFSET ; 4
+    ADC #<RXBASE ; 2
+    STA GETSTARTADR ; 4
 
 
-    LDA GETOFFSET+1
-    ADC #>RXBASE
-    STA GETSTARTADR+1
+    LDA GETOFFSET+1 ; 4
+    ADC #>RXBASE ; 2
+    STA GETSTARTADR+1 ; 4
 
     ; SET BUFFER ADDRESS ON W5100
     ;JSR DEBUG ; UNCOMMENT FOR W5100 DEBUG INFO
-    LDA GETSTARTADR+1 ; HIGH BYTE FIRST
-    STA WADRH
+    LDA GETSTARTADR+1 ; 4 HIGH BYTE FIRST
 
-    LDA GETSTARTADR
-    STA WADRL
+    STA WADRH ;4
+    BIT tick ; 4 (40)
+
+    LDA GETSTARTADR ; 4
+    STA WADRL ; 4
 
     ; restore content
-    PLA
+    PLA ; 4
     ; fall through
-    LDX #$00
+    LDX #$00 ; 2
 
 ;4 stores:
 ;- 73 cycles
@@ -374,12 +377,12 @@ RECV:
 ; XXX should fall through to op_tick_36?  Since this is the 50% duty cycle case
 
 op_nop:
-    LDY WDATA
-    STY @D+2
-    LDY WDATA
-    STY @D+1
+    LDY WDATA ; 4
+    STY @D+2 ; 4
+    LDY WDATA ; 4
+    STY @D+1 ; 4
 @D:
-    JMP op_nop
+    JMP op_nop ; 3
 
 .macro ticklabel page, cycles_left
     .concat ("_op_tick_page_", .string(page), "_tail_", .string(cycles_left))
@@ -1178,44 +1181,44 @@ op_ack:
 ; TODO: be careful about which registers we stomp here
 ; UPDATERXRD:
 
-    BIT tick
+    BIT tick ; 4
 
-    CLC
-    LDA #>S0RXRD ; NEED HIGH BYTE HERE
-    STA WADRH
-    LDA #<S0RXRD
+    CLC ; 2
+    LDA #>S0RXRD ; 2 NEED HIGH BYTE HERE
+    STA WADRH ; 4
+    LDA #<S0RXRD ; 2
 
-    STA WADRL
-    LDA WDATA
-    TAY ; SAVE
-    LDA WDATA ; LOW BYTE ; needed?  I don't think so
-    BEQ @1
+    STA WADRL ; 4
+    LDA WDATA ; 4
+    TAY ; 2 SAVE
+    LDA WDATA ; 4 LOW BYTE ; needed?  I don't think so
+    BEQ @1 ; 3
     BRK
 @1:
 
-    ADC #$00 ; GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
-    BIT tick
+    ADC #$00 ; 2 GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
 
-    TAX ; SAVE
-    TYA ; GET HIGH BYTE BACK
-    ADC #$08 ;GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIZE
-    TAY ; SAVE
+    TAX ; 2 SAVE
+    TYA ; 2 GET HIGH BYTE BACK
+    ADC #$08 ;2 GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIZE
+    BIT tick ; 4 (39) ; don't mess with Carry prior to ADC
+    TAY ; 2 SAVE
 
 
-    LDA #<S0RXRD
-    STA WADRL ; XXX already there?
+    LDA #<S0RXRD ; 2
+    STA WADRL ; 4 XXX already there?
 
-    STY WDATA ; SEND HIGH BYTE
-    STX WDATA ; SEND LOW BYTE
+    STY WDATA ; 4 SEND HIGH BYTE
+    STX WDATA ; 4 SEND LOW BYTE
 
 
 ; SEND THE RECV COMMAND
-    LDA #<S0CR
-    STA WADRL
-    LDA #SCRECV
-    STA WDATA
+    LDA #<S0CR ; 2
+    STA WADRL ; 4
+    LDA #SCRECV ; 2
+    STA WDATA ; 4
 
-    JMP CHECKRECV
+    JMP CHECKRECV ; 3 (35 with following BIT TICK)
 
 ; CLOSE TCP CONNECTION
 
