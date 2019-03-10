@@ -25,7 +25,6 @@ class Audio:
     def audio_stream(self):
         with audioread.audio_open(self.filename) as f:
             for buf in f.read_data(128 * 1024):
-                print(f.channels, f.samplerate, f.duration)
 
                 data = np.frombuffer(buf, dtype='int16').astype(
                     'float32').reshape((f.channels, -1), order='F')

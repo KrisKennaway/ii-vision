@@ -3,22 +3,18 @@
 from typing import Iterable, Iterator
 
 import audio
-import frame_grabber
 import opcodes
 import video
 
 
 class Movie:
-    def __init__(self, filename: str, audio_normalization:float=1.0):
+    def __init__(self, filename: str, audio_normalization: float = 1.0):
         self.filename = filename  # type: str
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
-        # TODO: get from input file
-        self.video = video.Video()  # type: video.Video
+        self.video = video.Video(filename)  # type: video.Video
 
         self.cycles = 0
-        self.ticks_per_video_frame = (
-                self.audio.sample_rate /  self.video.frame_rate)
 
         self.stream_pos = 0  # type: int
 
@@ -32,26 +28,16 @@ class Movie:
 
         self._last_op = opcodes.Nop()
 
-    def frames(self):
-        yield from frame_grabber.bmp2dhr_frame_grabber(self.filename)
-
     def encode(self) -> Iterator[opcodes.Opcode]:
-        ticks = 0
-        frames = 0
+        video_frames = self.video.frames()
         video_seq = None
 
-        video_frames = self.frames()
-
         for au in self.audio.audio_stream():
-            if ticks % self.ticks_per_video_frame == 0:
-                frames += 1
-                video_seq = self.video.encode_frame(next(video_frames))
-
-                print("Starting frame %d" % frames)
-                # TODO: compute similarity
-
-            ticks += 1
             self.cycles += self.audio.cycles_per_tick
+            if self.video.tick(self.cycles):
+                print("Starting frame %d" % self.video.frame_number)
+                video_frame = next(video_frames)
+                video_seq = self.video.encode_frame(video_frame)
 
             # au has range -15 .. 16 (step=1)
             # Tick cycles are units of 2
