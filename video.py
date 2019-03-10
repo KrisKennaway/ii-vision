@@ -24,33 +24,30 @@ def hamming_weight(n):
     n = (n & 0x0F) + ((n & 0xF0) >> 4)
     return n
 
+# TODO: what about increasing transposition cost?  Might be better to have
+# any pixel at the right place even if the wrong colour?
 
-# K G V W
-# O B
-
-error_substitute_costs = np.ones((128, 128), dtype=np.float64)
+substitute_costs = np.ones((128, 128), dtype=np.float64)
 
 # Penalty for turning on/off a black bit
 for c in "01GVWOB":
-    error_substitute_costs[(ord('K'), ord(c))] = 5
-    error_substitute_costs[(ord(c), ord('K'))] = 5
+    substitute_costs[(ord('K'), ord(c))] = 5
+    substitute_costs[(ord(c), ord('K'))] = 5
 
 # Penalty for changing colour
 for c in "01GVWOB":
     for d in "01GVWOB":
-        error_substitute_costs[(ord(c), ord(d))] = 1
-        error_substitute_costs[(ord(d), ord(c))] = 1
+        substitute_costs[(ord(c), ord(d))] = 1
+        substitute_costs[(ord(d), ord(c))] = 1
 
 insert_costs = np.ones(128, dtype=np.float64) * 1000
 delete_costs = np.ones(128, dtype=np.float64) * 1000
 
 
 @functools.lru_cache(None)
-def edit_weight(a: int, b: int, is_odd_offset: bool, error=False):
+def edit_weight(a: int, b: int, is_odd_offset: bool):
     a_pixels = byte_to_colour_string(a, is_odd_offset)
     b_pixels = byte_to_colour_string(b, is_odd_offset)
-
-    substitute_costs = error_substitute_costs  # if error else None
 
     dist = weighted_levenshtein.dam_lev(
         a_pixels, b_pixels,
@@ -82,12 +79,12 @@ def byte_to_colour_string(b: int, is_odd_offset: bool) -> str:
             "W"  # 0x11
         ), (
             "K",  # 0x00
-            "O",  # 0x01
-            "B",  # 0x10
+            "B",  # 0x01
+            "O",  # 0x10
             "W"  # 0x11
         )
     )
-    palette = palettes[b & 0x80 != 0]
+    palette = palettes[(b & 0x80) != 0]
 
     for _ in range(3):
         pixel = palette[(b >> idx) & 0b11]
