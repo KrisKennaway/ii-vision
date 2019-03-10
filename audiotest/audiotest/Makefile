@@ -44,9 +44,9 @@ PROJECT_TYPE = ca65
 # Set the default CPU to assemble for.  You can change this in the
 # body of a .s file using control commands like ".PC02".  Uncomment
 # the one you want below (the first one is the default):
-#    CPU = 6502
+    CPU = 6502
 #    CPU = 65SC02
-    CPU = 65C02
+#    CPU = 65C02
 #    CPU = 65816
 # Note: You can assemble for 65816 in 16-bit mode but the C compiler
 # will only produce 8-bit code.

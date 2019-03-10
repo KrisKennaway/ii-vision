@@ -104,20 +104,22 @@ text = $c051
 fullscr = $c052
 tick = $c030
 
+.segment "LOWCODE"
 ; RESET AND CONFIGURE W5100
+    JMP   RESET
+
+; Put code only needed at startup in the HGR page, we'll toast it when we're
+; done starting up
+.segment "HGR"
+
     LDA   #6    ; 5 RETRIES TO GET CONNECTION
     STA   PTR   ; NUMBER OF RETRIES
-    BPL   RESET ; ALWAYS TAKEN
 
 SRCADDR:  .byte   $C0,$A8,$01,147   ; 192.168.2.5  W5100 IP
 FADDR:    .byte   $C0,$A8,$01,15   ; 192.168.2.1   FOREIGN IP
 FPORT:    .byte   $4E,$20       ; 20000 FOREIGN PORT
 MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
 
-.segment "LOWCODE"
-    JMP RESET
-
-.segment "CODE"
 RESET:
     LDA #$80    ; reset
     STA WMODE
@@ -266,7 +268,11 @@ SETUP:
 ; default content value
     LDA #$7f
     PHA
+    JMP MAINLOOP
 
+.segment "CODE"
+
+MAINLOOP:
     JSR hgr
     STA fullscr
 
@@ -313,8 +319,6 @@ RECV:
     LDA WDATA ; 4
     STA GETSIZE ; 4 low byte XXX should be 0
 
-
-
     ;jsr DEBUG
 
 ; reset address pointer to socket buffer
@@ -334,7 +338,6 @@ RECV:
     AND #<RXMASK ; 2
 
     STA GETOFFSET ; 4
-
 
 ; CALCULATE PHYSICAL ADDRESS WITHIN W5100 RX BUFFER
 
@@ -684,7 +687,7 @@ tickident page, 8
 
 .macro op_tick_34 page ; repeats from op_tick_16
 .ident (.concat ("op_tick_34_page_", .string(page))):
-; 4+(4+4+5+4+5+4)+3+37
+; 4+(4+4+5+4+5+4+4+4)+2+5+5+3+20
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -692,22 +695,15 @@ tickident page, 8
     LDY WDATA ; 4
     STA page << 8,Y ; 5
     LDY WDATA ; 4
-    STA dummy ; 4
+    LDX WDATA ; 4
     BIT tick ; 4
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
-    NOP ; 2
-
     STA page << 8,Y ; 5
-    LDY WDATA ; 4
-    STA page << 8,Y ; 5
+    STA page << 8,X ; 5
 
-    LDA WDATA ; 4
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    LDX #$00 ; 2 restore X=0 invariant
+
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_20")) ; 3+20
 .endmacro
 
 .macro op_tick_36 page ; repeats from op_tick_18
@@ -873,7 +869,7 @@ tickident page, 8
 
 .macro op_tick_52 page ; repeats from op_tick_34
 .ident (.concat ("op_tick_52_page_", .string(page))):
-;4+(4+4+5+4+5+4+5+4+5+4+4+4)+2+4+4+4+3
+;4+(4+4+5+4+5+4+5+4+5+4+4+4)+2+3+12
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -886,18 +882,11 @@ tickident page, 8
     STA page << 8,Y ; 5
 
     LDA WDATA ; 4
-
-    STA dummy ; 4
+    STA .ident (.concat ("_op_tick_6_page_", .string(page), "_jmp"))+2 ; 4
     BIT tick ; 4
+    NOP ; 2
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
-    NOP ;2
-
-    STA @D+2 ; 4
-    LDA WDATA ; 4
-    STA @D+1 ; 4
-@D:
-    JMP op_nop ; 3
+    JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_12"))
     .endmacro
 
 .macro op_tick_54 page ; repeats from op_tick_36
@@ -1140,6 +1129,17 @@ op_tick 33
 op_tick 34
 op_tick 35
 op_tick 36
+op_tick_4 63
+op_tick_6 63
+op_tick_8 63
+op_tick_10 63
+op_tick_12 63
+op_tick_14 63
+op_tick_16 63
+op_tick_18 63
+op_tick_20 63
+op_tick_22 63
+op_tick_24 63
 
 .segment "CODE"
 op_tick 37
@@ -1167,9 +1167,29 @@ op_tick 58
 op_tick 59
 op_tick 60
 op_tick 61
-;op_tick 62
-;op_tick 63
+op_tick 62
 
+op_tick_26 63
+op_tick_28 63
+op_tick_30 63
+op_tick_32 63
+op_tick_34 63
+op_tick_36 63
+op_tick_38 63
+op_tick_40 63
+op_tick_42 63
+op_tick_44 63
+op_tick_46 63
+op_tick_48 63
+op_tick_50 63
+op_tick_52 63
+op_tick_54 63
+op_tick_56 63
+op_tick_58 63
+op_tick_60 63
+op_tick_62 63
+op_tick_64 63
+op_tick_66 63
 
 op_ack:
 ; MOVE ADDRESS POINTER 1 page further in socket buffer
@@ -1232,58 +1252,58 @@ CLOSECONN:
 
 ; CHECK FOR CLOSED STATUS
 
-CHECKCLOSED:
-    LDX #0
-@L:
-    LDA #<S0SR
-    STA WADRL
-    LDA WDATA
-    BEQ ISCLOSED
-    NOP
-    NOP
-    NOP
-    INX
-    BNE @L  ; DON'T WAIT FOREVER
-ISCLOSED:
-    RTS ; SOCKET IS CLOSED
+;CHECKCLOSED:
+;    LDX #0
+;@L:
+;    LDA #<S0SR
+;    STA WADRL
+;    LDA WDATA
+;    BEQ ISCLOSED
+;    NOP
+;    NOP
+;    NOP
+;    INX
+;    BNE @L  ; DON'T WAIT FOREVER
+;ISCLOSED:
+;    RTS ; SOCKET IS CLOSED
 
 ; SUPPORT SUBROUTINE: CLEANOUT
 ; "CLEANS UP" OUTPUT FOR THE APPLE BY
 ; SETTING THE HIGH BIT AND DOING SOME SUBSTITUTIONS
-CLEANOUT:
-    ORA #%10000000 ; SET HIGH BIT
-    CMP #$8A ; NEWLINE?
-    BNE @OUT
-    LDA #$8D ; CONVERT TO <CR>
-@OUT:
-    JMP COUT ; THIS WILL DO THE RTS
+;CLEANOUT:
+;    ORA #%10000000 ; SET HIGH BIT
+;    CMP #$8A ; NEWLINE?
+;    BNE @OUT
+;    LDA #$8D ; CONVERT TO <CR>
+;@OUT:
+;    JMP COUT ; THIS WILL DO THE RTS
 
 ; DEBUG - PRINT W5100 STARTADR AND SIZE
-DEBUG:
-    LDA #$A0 ; " "
-    JSR COUT
-    LDA #$A4 ; "$"
-    JSR COUT
-    LDA GETOFFSET+1
-    LDX GETOFFSET
-    JSR PRNTAX
+;DEBUG:
+;    LDA #$A0 ; " "
+;    JSR COUT
+;    LDA #$A4 ; "$"
+;    JSR COUT
+;    LDA GETOFFSET+1
+;    LDX GETOFFSET
+;    JSR PRNTAX
 
-    LDA #$A0 ; " "
-    JSR COUT
-    LDA #$A4 ; "$"
-    JSR COUT
-    LDA GETSTARTADR+1
-    LDX GETSTARTADR
-    JSR PRNTAX
+;    LDA #$A0 ; " "
+;    JSR COUT
+;    LDA #$A4 ; "$"
+;    JSR COUT
+;    LDA GETSTARTADR+1
+;    LDX GETSTARTADR
+;    JSR PRNTAX
 
-    LDA #$A0 ; " "
-    JSR COUT
-    LDA #$A4 ; "$"
-    JSR COUT
-    LDA GETSIZE+1
-    LDX GETSIZE
-    JSR PRNTAX
-    LDA #$8D
-    JMP COUT ; THIS WILL DO THE RTS
+;    LDA #$A0 ; " "
+;    JSR COUT
+;    LDA #$A4 ; "$"
+;   JSR COUT
+;LDA GETSIZE+1
+;    LDX GETSIZE
+;    JSR PRNTAX
+;    LDA #$8D
+;    JMP COUT ; THIS WILL DO THE RTS
 
 .endproc
