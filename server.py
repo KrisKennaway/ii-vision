@@ -9,6 +9,8 @@ def main(argv):
     serve_file = argv[1]
 
     def handler(serve_file):
+        nonlocal serve_file
+
         class ChunkHandler(socketserver.BaseRequestHandler):
             def handle(self):
                 with open(serve_file, "rb") as f:
