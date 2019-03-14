@@ -8,7 +8,7 @@ import video
 
 
 class Movie:
-    def __init__(self, filename: str, audio_normalization: float = 1.0):
+    def __init__(self, filename: str, audio_normalization: float = None):
         self.filename = filename  # type: str
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio

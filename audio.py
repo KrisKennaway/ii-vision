@@ -10,9 +10,8 @@ import video
 
 class Audio:
     def __init__(
-            self, filename: str, normalization: float = 1.0):
+            self, filename: str, normalization: float = None):
         self.filename = filename
-        self.normalization = normalization
 
         # TODO: take into account that the available range is slightly offset
         # as fraction of total cycle count?
@@ -22,16 +21,41 @@ class Audio:
         # TODO: round to divisor of video frame rate
         self.sample_rate = 14340  # int(1024. * 1024 / self.cycles_per_tick)
 
+        self.normalization = normalization or self._normalization()
+        print(self.normalization)
+
+    def _decode(self, f, buf) -> np.array:
+        data = np.frombuffer(buf, dtype='int16').astype(
+            'float32').reshape((f.channels, -1), order='F')
+
+        a = librosa.core.to_mono(data)
+        a = librosa.resample(a, f.samplerate,
+                             self.sample_rate).flatten()
+
+        return a
+
+    def _normalization(self, read_bytes=1024*1024*10):
+        """Read first read_bytes of audio stream and compute normalization.
+
+        We compute the 2.5th and 97.5th percentiles i.e. only 2.5% of samples
+        will clip.
+        """
+        raw = bytearray()
+        with audioread.audio_open(self.filename) as f:
+            for buf in f.read_data():
+                raw.extend(bytearray(buf))
+                if len(raw) > read_bytes:
+                    break
+        a = self._decode(f, raw)
+        norm = np.max(np.abs(np.percentile(a, [2.5, 97.5])))
+        assert norm
+
+        return 16384. / norm
+
     def audio_stream(self):
         with audioread.audio_open(self.filename) as f:
             for buf in f.read_data(128 * 1024):
-
-                data = np.frombuffer(buf, dtype='int16').astype(
-                    'float32').reshape((f.channels, -1), order='F')
-
-                a = librosa.core.to_mono(data)
-                a = librosa.resample(a, f.samplerate,
-                                     self.sample_rate).flatten()
+                a = self._decode(f, buf)
 
                 a /= 16384  # normalize to -1.0 .. 1.0
                 a *= self.normalization
