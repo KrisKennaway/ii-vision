@@ -1,3 +1,5 @@
+from typing import Iterator
+
 import audioread
 import librosa
 import numpy as np
@@ -6,18 +8,18 @@ import numpy as np
 class Audio:
     def __init__(
             self, filename: str, normalization: float = None):
-        self.filename = filename
+        self.filename = filename  # type: str
 
         # TODO: take into account that the available range is slightly offset
         # as fraction of total cycle count?
         self._tick_range = [4, 66]
-        self.cycles_per_tick = 73
+        self.cycles_per_tick = 73  # type: int
 
         # TODO: round to divisor of video frame rate
         self.sample_rate = 14340  # int(1024. * 1024 / self.cycles_per_tick)
 
-        self.normalization = normalization or self._normalization()
-        print(self.normalization)
+        self.normalization = (
+                normalization or self._normalization())  # type: float
 
     def _decode(self, f, buf) -> np.array:
         data = np.frombuffer(buf, dtype='int16').astype(
@@ -47,7 +49,7 @@ class Audio:
 
         return 16384. / norm
 
-    def audio_stream(self):
+    def audio_stream(self) -> Iterator[int]:
         with audioread.audio_open(self.filename) as f:
             for buf in f.read_data(128 * 1024):
                 a = self._decode(f, buf)

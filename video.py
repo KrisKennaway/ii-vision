@@ -19,7 +19,7 @@ import screen
 class Video:
     """Apple II screen memory map encoding a bitmapped frame."""
 
-    CLOCK_SPEED = 1024 * 1024
+    CLOCK_SPEED = 1024 * 1024  # type: int
 
     def __init__(self, filename: str):
         self.filename = filename  # type: str
@@ -27,27 +27,30 @@ class Video:
         self._reader = skvideo.io.FFmpegReader(filename)
 
         # Compute frame rate from input video
+        # TODO: possible to compute time offset for each frame instead?
         data = skvideo.io.ffprobe(self.filename)['video']
         rate_data = data['@r_frame_rate'].split("/")  # e.g. 12000/1001
-        self._input_frame_rate = float(rate_data[0]) / float(rate_data[1])
+        self._input_frame_rate = float(
+            rate_data[0]) / float(rate_data[1])  # type: float
 
-        self.cycles_per_frame = 1024. * 1024 / self._input_frame_rate
-        self.frame_number = 0
+        self.cycles_per_frame = (
+                1024. * 1024 / self._input_frame_rate)  # type: float
+        self.frame_number = 0  # type: int
 
-        # Initialize empty
+        # Initialize empty screen
         self.memory_map = screen.MemoryMap(
             screen_page=1)  # type: screen.MemoryMap
 
         # Accumulates pending edit weights across frames
         self.update_priority = np.zeros((32, 256), dtype=np.int64)
 
-    def tick(self, cycles) -> bool:
+    def tick(self, cycles: int) -> bool:
         if cycles > (self.cycles_per_frame * self.frame_number):
             self.frame_number += 1
             return True
         return False
 
-    def _frame_grabber(self):
+    def _frame_grabber(self) -> Iterator[Image]:
         for frame_array in self._reader.nextFrame():
             yield Image.fromarray(frame_array)
 
@@ -66,6 +69,7 @@ class Video:
         q = queue.Queue(maxsize=10)
 
         def worker():
+            """Invoke bmp2dhr to encode input image frames and push to queue."""
             for _idx, _frame in enumerate(self._frame_grabber()):
                 outfile = "%s/%08dC.BIN" % (frame_dir, _idx)
                 bmpfile = "%s/%08d.bmp" % (frame_dir, _idx)
@@ -86,7 +90,7 @@ class Video:
 
             q.put(None)
 
-        t = threading.Thread(target=worker)
+        t = threading.Thread(target=worker, daemon=True)
         t.start()
 
         while True:
