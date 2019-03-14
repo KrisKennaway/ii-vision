@@ -1,10 +1,7 @@
-import random
-
-import numpy as np
 import audioread
 import librosa
+import numpy as np
 
-import opcodes
 import video
 
 
@@ -34,7 +31,7 @@ class Audio:
 
         return a
 
-    def _normalization(self, read_bytes=1024*1024*10):
+    def _normalization(self, read_bytes=1024 * 1024 * 10):
         """Read first read_bytes of audio stream and compute normalization.
 
         We compute the 2.5th and 97.5th percentiles i.e. only 2.5% of samples
