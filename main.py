@@ -14,14 +14,14 @@ def main(argv):
     filename = argv[1]
     m = movie.Movie(filename)
 
-    if len(argv) >= 2:
+    if len(argv) >= 3:
         out_filename = argv[2]
     else:
         out_filename = ".".join(filename.split(".")[:-1] + ["a2m"])
 
     with open(out_filename, "wb") as out:
         for bytes_out, b in enumerate(m.emit_stream(m.encode())):
-            out.write(bytes(b))
+            out.write(bytearray([b]))
 
             if bytes_out >= MAX_OUT:
                 break
