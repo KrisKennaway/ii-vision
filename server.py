@@ -1,22 +1,26 @@
 import socketserver
+import sys
 
 ADDR = "192.168.1.15"
 PORT = 20000
 
-FILE = "out.bin"
 
+def main(argv):
+    serve_file = argv[1]
 
-class ChunkHandler(socketserver.BaseRequestHandler):
-    def handle(self):
-        with open(FILE, "rb") as f:
-            data = f.read()
-            print("Sending %d bytes" % len(data))
-            self.request.sendall(data)
+    def handler(serve_file):
+        class ChunkHandler(socketserver.BaseRequestHandler):
+            def handle(self):
+                with open(serve_file, "rb") as f:
+                    data = f.read()
+                    print("Sending %d bytes" % len(data))
+                    self.request.sendall(data)
 
+        return ChunkHandler
 
-def main():
     with socketserver.TCPServer(
-            (ADDR, PORT), ChunkHandler, bind_and_activate=False) as server:
+            (ADDR, PORT), handler(serve_file),
+            bind_and_activate=False) as server:
         server.allow_reuse_address = True
         server.server_bind()
         server.server_activate()
@@ -24,4 +28,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
