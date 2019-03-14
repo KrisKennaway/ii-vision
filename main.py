@@ -1,24 +1,27 @@
+"""Transcodes an input video file to Apple II format."""
+
+import sys
+
 import movie
 
 MAX_OUT = 100 * 1024 * 1024
-VIDEO_FPS = 30
-APPLE_FPS = 30
 
 
-def main():
-    filename = "apple_ii_forever.m4v"
+# TODO: flags
+# - max out
 
-    # filename = "Computer Chronicles - 06x05 - The Apple II.mp4"
-    # filename = (
-    #     "Rick Astley - Never Gonna Give You Up (Official "
-    #     "Music Video).mp4"
-    # )
+def main(argv):
+    filename = argv[1]
+    m = movie.Movie(filename)
 
-    m = movie.Movie(filename, audio_normalization=2.0)
+    if len(argv) >= 2:
+        out_filename = argv[2]
+    else:
+        out_filename = ".".join(filename.split(".")[:-1] + ["a2m"])
 
-    with open("out.bin", "wb") as out:
+    with open(out_filename, "wb") as out:
         for bytes_out, b in enumerate(m.emit_stream(m.encode())):
-            out.write(bytearray([b]))
+            out.write(bytes(b))
 
             if bytes_out >= MAX_OUT:
                 break
@@ -27,4 +30,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    main(sys.argv)
