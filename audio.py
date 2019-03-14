@@ -2,8 +2,6 @@ import audioread
 import librosa
 import numpy as np
 
-import video
-
 
 class Audio:
     def __init__(
@@ -62,19 +60,3 @@ class Audio:
                 a = np.clip(a, -15, 16)
 
                 yield from a
-
-
-def main():
-    filename = "Computer Chronicles - 06x05 - The Apple II.mp4"
-
-    s = video.Video(frame_rate=None)
-    au = Audio(filename, normalization=3)
-
-    with open("out.bin", "wb") as out:
-        for b in s.emit_stream(au.encode_audio()):
-            out.write(bytearray([b]))
-        out.write(bytes(s.done()))
-
-
-if __name__ == "__main__":
-    main()
