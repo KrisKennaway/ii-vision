@@ -8,11 +8,10 @@ PORT = 20000
 def main(argv):
     serve_file = argv[1]
 
-    def handler(serve_file):
-        nonlocal serve_file
-
+    def handler():
         class ChunkHandler(socketserver.BaseRequestHandler):
             def handle(self):
+
                 with open(serve_file, "rb") as f:
                     data = f.read()
                     print("Sending %d bytes" % len(data))
@@ -21,7 +20,7 @@ def main(argv):
         return ChunkHandler
 
     with socketserver.TCPServer(
-            (ADDR, PORT), handler(serve_file),
+            (ADDR, PORT), handler(),
             bind_and_activate=False) as server:
         server.allow_reuse_address = True
         server.server_bind()
