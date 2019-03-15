@@ -1,31 +1,35 @@
 ;
-;  main.s
-;  audiotest
+;  ][Vision
 ;
 ;  Created by Kris Kennaway on 07/01/2019.
 ;  Copyright © 2019 Kris Kennaway. All rights reserved.
 ;
+;  W5100/Uthernet II code based on "TCP SOCKET DEMO FOR W5100/UTHERNET II" by D. Finnigan.
+
+; Fitting this in 64K together with ProDOS is pretty tight.  We make use of 3 memory
+; segments:
+;
+; LOWCODE (0x800 - 0x1fff)
+; HGR (0x2000 - 0x3fff): code needed only at startup, which will be erased as soon as we start playing a video
+; CODE (0x4000 - 0xbaff): rest of main memory unused by ProDOS
 
 .include "apple2.inc"
 
+; Write symbol table to .dbg file, so that we can read opcode offsets in the video
+; transcoder.
+.DEBUGINFO
+
 .proc main
 
-TICK = $c030
+hgr = $f3e2
+fullscr = $c052
+tick = $c030 ; where the magic happens
 
 ; some dummy addresses in order to pad cycle counts
 zpdummy = $00
 dummy = $ffff
 
-; Write symbol table to object file
-.DEBUGINFO
-
-; TCP SOCKET DEMO FOR W5100/UTHERNET II
-; BY D. FINNIGAN
-; OCTOBER 2015
-;
-; UPDATED 09 JAN 2016 6*
-; UPDATED 13 FEB 2017, C. TORRENCE
-;  -REMOVED SEPARATE PATH FOR WRAP, ADD DEBUG PRINT
+; TODO: make slot I/O addresses customizable
 
 ; SLOT 1 I/O ADDRESSES FOR THE W5100
 WMODE = $C094
@@ -39,7 +43,6 @@ SRCIP    =   $000F    ; SOURCE IP ADDRESS
 RMSR     =   $001A    ; RECEIVE BUFFER SIZE
 
 ; SOCKET 0 LOCATIONS
-
 S0MR = $0400  ; SOCKET 0 MODE REGISTER
 S0CR = $0401  ; COMMAND REGISTER
 S0IR = $0402  ; INTERRUPT REGISTER
@@ -93,35 +96,29 @@ PRBYTE   =   $FDDA
 PRNTAX   =   $F941
 
 ; ZERO-PAGE STORAGE
-PTR      =   $06  ; 2 BYTES FOR APPLE BUFFER
+PTR      =   $06  ; TODO: we only use this for connection retry count
 GETSIZE  =   $08  ; 2 BYTES FOR RX_RSR
 GETOFFSET =  $0A  ; 2 BYTES FOR OFFSET ADDR
 GETSTARTADR = $0C ; 2 BYTES FOR PHYSICAL ADDR
 
-hgr = $f3e2
-gr = $c050
-text = $c051
-fullscr = $c052
-tick = $c030
-
-; this is the main entrypoint
-
+; this is the main binary entrypoint (it will be linked at 0x800)
 .segment "LOWCODE"
-; RESET AND CONFIGURE W5100
-    JMP   RESET
+    JMP bootstrap
 
 ; Put code only needed at startup in the HGR page, we'll toast it when we're
 ; done starting up
-
 .segment "HGR"
 
-    LDA   #6    ; 5 RETRIES TO GET CONNECTION
-    STA   PTR   ; NUMBER OF RETRIES
-
+; TODO: make these configurable
 SRCADDR:  .byte   $C0,$A8,$01,147   ; 192.168.2.5  W5100 IP
 FADDR:    .byte   $C0,$A8,$01,15   ; 192.168.2.1   FOREIGN IP
 FPORT:    .byte   $4E,$20       ; 20000 FOREIGN PORT
 MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
+
+; RESET AND CONFIGURE W5100
+bootstrap:
+    LDA   #6    ; 5 RETRIES TO GET CONNECTION
+    STA   PTR   ; NUMBER OF RETRIES
 
 RESET:
     LDA #$80    ; reset
@@ -260,74 +257,78 @@ ERRMSG: .byte $d3,$cf,$c3,$cb,$c5,$d4,$a0,$c3,$cf,$d5,$cc,$c4,$a0,$ce,$cf,$d4,$a
     .byte $8D,$00
 
 SETUP:
-
-; SET BUFFER ADDRESS ON APPLE
-;    LDA #0 ; LOW BYTE OF BUFFER
-;    STA PTR
-;    LDA #$50 ; HIGH BYTE
-;    STA PTR+1
-
-; init graphics XXX
-; default content value
-    LDA #$7f
-    PHA
-    JMP MAINLOOP
+    JMP init_mainloop
 
 .segment "CODE"
-
-; XXX not really main loop
-MAINLOOP:
-    JSR hgr ; this also nukes the startup code we placed in HGR segment
+init_mainloop:
+    JSR hgr ; nukes the startup code we placed in HGR segment
     STA fullscr
 
-; This is the main loop
+    ; establish invariant expected by decode loop
+    LDX #$00
 
-; CHECK FOR ANY RECEIVED DATA
+; This is the main audio/video decode loop.
+;
+; The outer loop waits for the socket buffer to contain >2K of pending data before
+; dispatching to the inner loop.
+;
+; The inner loop is structured in terms of "player opcodes", which receive any parameters
+; from the TCP stream, and conclude with 2 bytes that are used as JMP address to the next
+; opcode.
+;
+; Everything here has the following invariants:
+; - opcodes are expected to take 73 cycles
+;   - (though the NOP and TERMINATE opcodes don't do this but they're only used at the start/
+;     end of the stream).
+; - opcodes must maintain X=0 upon completion.
+;   - this is assumed in some of the tick opcodes as a trick to get an extra cycle
+;     via STA foo,X (5 cycles) instead of STA foo (4 cycles)
+;
+; During the ACK opcode and subsequent outer loop transit, we keep ticking the speaker
+; every 36/37 cycles to maintain a multiple of 73 cycles
+; XXX is it actually an integer multiple?
 
+;4 stores:
+;- 73 cycles
+;- 14364 Hz
+;- 57456 stores/sec
+;- 5 bit DAC
+
+
+; Check for any received data
 CHECKRECV:
-;    BIT KBD ; KEYPRESS?
-;    BPL @NEXT
-;    LDA KBDSTRB
-;    JMP CLOSECONN ; CLOSE CONNECTION
+    BIT tick        ; 4
 
-;@NEXT:
-    BIT tick ; 4
-
-    LDA #<S0RXRSR ; 2 S0 RECEIVED SIZE REGISTER
-    STA WADRL ; 4
+    LDA #<S0RXRSR   ; 2 S0 RECEIVED SIZE REGISTER
+    STA WADRL       ; 4
     LDA WDATA       ; 4 HIGH BYTE OF RECEIVED SIZE
     ORA WDATA       ; 4 LOW BYTE
-    ; XXX assume data
-    BEQ NORECV      ; 2 NO DATA TO READ
+    BNE RECV        ; 2 THERE IS DATA
 
-    JMP RECV        ; 3 THERE IS DATA
-
-NORECV:
-    ; XXX needed?
-    NOP ; LITTLE DELAY ...
+    ; Not sure whether this delay is needed?
+    NOP ; Little delay ...
     NOP
-
-    ; XXX how often does this happen?
-
-    JMP CHECKRECV   ; CHECK AGAIN
+    JMP CHECKRECV   ; Check again
 
 ; THERE IS DATA TO READ - COMPUTE THE PHYSICAL ADDRESS
-
 RECV:
     LDA #<S0RXRSR ; 2 GET RECEIVED SIZE AGAIN
     STA WADRL ; 4
     LDA WDATA ; 4
 
-    CMP #$10 ; 2 expect at least 4k
-    bcc CHECKRECV ; 2 not yet
+    ; expect at least 2k more data present.  The decoder does not do any implicit management
+    ; of the TCP socket buffer, unless instructed to by the video byte stream.  This
+    ; opcode is scheduled every 2k bytes, so we'd better not fall off the end of the stream.
+    CMP #$08 ; 2 expect at least 2k
+    bcs @L ; 3 branch should mostly be taken, pads out the next tick to 36 cycles
+    BCC CHECKRECV ; not yet
 
-    BIT tick ; 4 (37)
+@L:
+    BIT tick ; 4 (36 cycles)
 
     STA GETSIZE+1 ; 4
     LDA WDATA ; 4
-    STA GETSIZE ; 4 low byte XXX should be 0
-
-    ;jsr DEBUG
+    STA GETSIZE ; 4 low byte (this should be 0 i.e. we could optimize this away, but we dont need to bother because the cycle timings work out anyway)
 
 ; reset address pointer to socket buffer
 ; CALCULATE OFFSET ADDRESS USING READ POINTER AND RX MASK
@@ -336,31 +337,25 @@ RECV:
 
     LDA WDATA ; 4 HIGH BYTE
     AND #>RXMASK ; 2
-    STA GETOFFSET+1 ; 4
+    STA GETOFFSET+1,X ; 5 - using X=0 to get an extra cycle before next tick
     LDA WDATA ; 4 LOW BYTE
-    ; why is this not 0?
-    ;BEQ @L    ; XXX assert 0
-    ;BRK
-@L:
-    BIT tick ; 4(36)
+
+    BIT tick ; 4 (37 cycles)
     AND #<RXMASK ; 2
 
     STA GETOFFSET ; 4
 
-; CALCULATE PHYSICAL ADDRESS WITHIN W5100 RX BUFFER
-
+    ; CALCULATE PHYSICAL ADDRESS WITHIN W5100 RX BUFFER
     CLC ; 2
     LDA GETOFFSET ; 4
     ADC #<RXBASE ; 2
     STA GETSTARTADR ; 4
-
 
     LDA GETOFFSET+1 ; 4
     ADC #>RXBASE ; 2
     STA GETSTARTADR+1 ; 4
 
     ; SET BUFFER ADDRESS ON W5100
-    ;JSR DEBUG ; UNCOMMENT FOR W5100 DEBUG INFO
     LDA GETSTARTADR+1 ; 4 HIGH BYTE FIRST
 
     BIT tick ; 4 (36)
@@ -369,30 +364,33 @@ RECV:
     LDA GETSTARTADR ; 4
     STA WADRL ; 4
 
-    ; restore invariant expected by inner loop
+    ; ensure invariant expected by inner loop
+    ; it's probably already fine, but we have 2 cycles to spare anyway ;)
     LDX #$00 ; 2
 
-;4 stores:
-;- 73 cycles
-;- 14364 Hz
-;- 57456 stores/sec
-;- 7.5 full screen frames/sec
-;- 4 .. 70 opcodes = 32 opcodes/page
-;- 5 bit DAC
-;- 53 bytes/opcode
-;- 53*32*32 = 54272 bytes.  Just enough to fit in AUX?
-;- 0x800..0x1fff, 0x4000...0xffff = 55294 bytes
+    ; fall through to op_nop
 
-; XXX should fall through to op_tick_36?  Since this is the 50% duty cycle case
-
-; XXX pad to 73 cycles since it will mess with the audio
 op_nop:
     LDY WDATA ; 4
     STY @D+2 ; 4
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    JMP op_nop ; 3 ; 37 with following TICK
+    JMP op_nop ; 3 ; 37 with following tick
+
+; Build macros for "fat" opcodes that do the following:
+; - tick twice, N cycles apart (N = 4 .. 66 in steps of 2)
+; - read a content byte from the stream
+; - have an opcode-specific page offset configured (e.g. STA $2000,Y)
+; - read 4 page offsets from the stream
+; - store the content byte at these offsets
+; - read 2 bytes from the stream as address of next opcode
+;
+; Each opcode has 6 cycles of padding, which is necessary to support reordering things to
+; get the second "BIT tick" at the right cycle offset.
+;
+; Where possible we share code by JMPing to a common tail instruction sequence in one of the
+; earlier opcodes.  This is critical for reducing code size enough to fit.
 
 .macro ticklabel page, cycles_left
     .concat ("_op_tick_page_", .string(page), "_tail_", .string(cycles_left))
@@ -447,9 +445,8 @@ tickident page, 7
 .endmacro
 
 .macro op_tick_6 page
-.ident (.concat ("op_tick_6_page_", .string(page))):
 ;4+(2+4)+3+4+4+5+4+5+4+5+4+5+4+4+4+5+3
-
+.ident (.concat ("op_tick_6_page_", .string(page))):
     BIT tick ; 4
     NOP ; 2
     BIT tick ; 4
@@ -484,8 +481,9 @@ tickident page, 12
     LDA WDATA ; 4
 tickident page, 8
     ; NB: we use ,X indexing here to get an extra cycle.  This requires us to
-    ; maintain the invariant X=0 across opcode dispatch
-    STA .ident(.concat ("_op_tick_6_page_", .string(page), "_jmp"))+1,x ; 5
+    ; maintain the invariant X=0 across opcode dispatch.  Surprisingly this doesn't turn
+    ; out to be a big deal.
+    STA .ident(.concat ("_op_tick_6_page_", .string(page), "_jmp"))+1,X ; 5
 
 .ident (.concat ("_op_tick_6_page_", .string(page), "_jmp")):
     JMP op_nop ; 3
@@ -526,8 +524,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_14 page
-.ident (.concat ("op_tick_14_page_", .string(page))):
 ;4+(4+4+2+4)+3+52
+.ident (.concat ("op_tick_14_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -538,13 +536,13 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_16 page
-.ident (.concat ("op_tick_16_page_", .string(page))):
 ; 4+(4+4+4+4)+5+2+3+43
+.ident (.concat ("op_tick_16_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
-    ; This lets us share a common opcode tail; otherwise we need a STA dummy 4-cycle opcode
-    ; which doesn't leave enough to JMP with.
-    ; This temporarily violates X=0 invariant required by tick_6
+    ; This temporarily violates X=0 invariant required by tick_6, but lets us share a
+    ; common opcode tail; otherwise we need a dummy 4-cycle opcode between the ticks, which
+    ; doesn't leave enough to JMP with.
     LDX WDATA ; 4
     LDY WDATA ; 4
     BIT tick ; 4
@@ -556,8 +554,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_18 page
-.ident (.concat ("op_tick_18_page_", .string(page))):
 ; 4 + (4+4+4+2+4)+5+5+2+2+4+5+4+5+4+4+4+4+3
+.ident (.concat ("op_tick_18_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -572,7 +570,7 @@ tickident page, 8
 
     LDX #$00 ; 2 restore X=0 invariant
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; used >3 pad cycles already; can't branch to tail
     NOP ; 2
     
     LDY WDATA ; 4
@@ -590,8 +588,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_20 page
-.ident (.concat ("op_tick_20_page_", .string(page))):
 ;4+(4+4+5+3+4)+3+46=73
+.ident (.concat ("op_tick_20_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -602,9 +600,10 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_46"))
 .endmacro
 
+; TODO: this one actually has 21 cycles between ticks, not 22
 .macro op_tick_22 page
+; 4+(4+4+5+4+4)+3+3+42
 .ident (.concat ("op_tick_22_page_", .string(page))):
-; 4+(4+4+5+4+4)+3+3+42  XXX really tick_21
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -617,8 +616,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_24 page
-.ident (.concat ("op_tick_24_page_", .string(page))):
 ;4+(4+4+5+4+3+4)+3+42
+.ident (.concat ("op_tick_24_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -630,9 +629,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_42"))
 .endmacro
 
-.macro op_tick_26 page ; repeats from op_tick_8
-.ident (.concat ("op_tick_26_page_", .string(page))):
+.macro op_tick_26 page ; pattern repeats from op_tick_8
 ; 4+(4+4+5+4+5+4)+3+37
+.ident (.concat ("op_tick_26_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -645,9 +644,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_37")) ; 3 + 37
 .endmacro
 
-.macro op_tick_28 page ; repeats from op_tick_10
-.ident (.concat ("op_tick_28_page_", .string(page))):
+.macro op_tick_28 page ; pattern repeats from op_tick_10
 ; 4+(4+2+4+5+4+5+4)+3+38
+.ident (.concat ("op_tick_28_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -660,9 +659,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_38"))
 .endmacro
 
-.macro op_tick_30 page ; repeats from op_tick_12
-.ident (.concat ("op_tick_30_page_", .string(page))):
+.macro op_tick_30 page ; pattern repeats from op_tick_12
 ;4+(4+4+5+4+5+4+4)+3+3+33
+.ident (.concat ("op_tick_30_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -676,9 +675,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_33")) ; 3 + 33
 .endmacro
 
-.macro op_tick_32 page ; repeats from op_tick_14
-.ident (.concat ("op_tick_32_page_", .string(page))):
+.macro op_tick_32 page ; pattern repeats from op_tick_14
 ;4+(4+4+5+4+5+4+2+4)+3+34
+.ident (.concat ("op_tick_32_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -692,9 +691,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_34"))
 .endmacro
 
-.macro op_tick_34 page ; repeats from op_tick_16
-.ident (.concat ("op_tick_34_page_", .string(page))):
+.macro op_tick_34 page ; pattern repeats from op_tick_16
 ; 4+(4+4+5+4+5+4+4+4)+2+5+5+3+20
+.ident (.concat ("op_tick_34_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -702,7 +701,7 @@ tickident page, 8
     LDY WDATA ; 4
     STA page << 8,Y ; 5
     LDY WDATA ; 4
-    LDX WDATA ; 4
+    LDX WDATA ; 4 ; allows reordering STA ...,X outside ticks
     BIT tick ; 4
 
     STA page << 8,Y ; 5
@@ -713,9 +712,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_20")) ; 3+20
 .endmacro
 
-.macro op_tick_36 page ; repeats from op_tick_18
-.ident (.concat ("op_tick_36_page_", .string(page))):
+.macro op_tick_36 page ; pattern repeats from op_tick_18
 ;4+(4+4+5+4+5+4+4+2+4)+5+5+2+2+4+4+4+4+3
+.ident (.concat ("op_tick_36_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -731,7 +730,7 @@ tickident page, 8
     STA page << 8,X ; 5
     LDX #$00 ; 2
     NOP ; 2
-    ; used >3 pad cycles within tick loop and restoring invariant; can't branch to tail
+    ; used >3 pad cycles between tick pair and restoring invariant; can't branch to tail
 
     LDA WDATA ; 4
     STA @D+2 ; 4
@@ -741,9 +740,9 @@ tickident page, 8
     JMP op_nop ; 3
 .endmacro
 
-.macro op_tick_38 page ; repeats from op_tick_20
-.ident (.concat ("op_tick_38_page_", .string(page))):
+.macro op_tick_38 page ; pattern repeats from op_tick_20
 ; 4 + (4+4+5+4+5+4+5+3+4)+3+28
+.ident (.concat ("op_tick_38_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -758,9 +757,10 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_28")) ; 3 + 28
 .endmacro
 
-.macro op_tick_40 page ; repeats from op_tick_22 ; XXX really tick_41
-.ident (.concat ("op_tick_40_page_", .string(page))):
+; TODO: this one actually has 41 cycles between ticks, not 40
+.macro op_tick_40 page ; pattern repeats from op_tick_22
 ;4+(4+4+5+4+5+4+5+4+4)+3+3+24
+.ident (.concat ("op_tick_40_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -776,9 +776,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_24"))
 .endmacro
 
-.macro op_tick_42 page ; repeats from op_tick_24
-.ident (.concat ("op_tick_42_page_", .string(page))):
+.macro op_tick_42 page ; pattern repeats from op_tick_24
 ;4+(4+4+5+4+5+4+5+4+3+4)+3+24
+.ident (.concat ("op_tick_42_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -794,9 +794,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_24")) ; 3 + 24
 .endmacro
 
-.macro op_tick_44 page ; repeats from op_tick_26
-.ident (.concat ("op_tick_44_page_", .string(page))):
+.macro op_tick_44 page ; pattern repeats from op_tick_26
 ; 4 + (4+4+5+4+5+4+5+4+5+4)+3+3+19
+.ident (.concat ("op_tick_44_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -813,9 +813,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_19")) ; 3 + 19
 .endmacro
 
-.macro op_tick_46 page ; repeats from op_tick_28
-.ident (.concat ("op_tick_46_page_", .string(page))):
+.macro op_tick_46 page ; pattern repeats from op_tick_28
 ;4+(4+2+4+5+4+5+4+5+4+5+4)+3+20
+.ident (.concat ("op_tick_46_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -832,9 +832,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_20"))
     .endmacro
 
-.macro op_tick_48 page ; repeats from op_tick_30
-.ident (.concat ("op_tick_48_page_", .string(page))):
+.macro op_tick_48 page ; pattern repeats from op_tick_30
 ;4+(4+4+5+4+5+4+5+4+5+4+4)+3+3+15
+.ident (.concat ("op_tick_48_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -853,9 +853,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_15")) ; 3 + 15
 .endmacro
 
-.macro op_tick_50 page ; repeats from op_tick_32
-.ident (.concat ("op_tick_50_page_", .string(page))):
+.macro op_tick_50 page ; pattern repeats from op_tick_32
 ;4+(4+4+5+4+5+4+5+4+5+4+2+4)+3+16
+.ident (.concat ("op_tick_50_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -874,9 +874,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_16"))
 .endmacro
 
-.macro op_tick_52 page ; repeats from op_tick_34
-.ident (.concat ("op_tick_52_page_", .string(page))):
+.macro op_tick_52 page ; pattern repeats from op_tick_34
 ;4+(4+4+5+4+5+4+5+4+5+4+4+4)+2+3+12
+.ident (.concat ("op_tick_52_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -896,9 +896,9 @@ tickident page, 8
     JMP .ident(.concat("_op_tick_page_", .string(page), "_tail_12"))
     .endmacro
 
-.macro op_tick_54 page ; repeats from op_tick_36
-.ident (.concat ("op_tick_54_page_", .string(page))):
+.macro op_tick_54 page ; pattern repeats from op_tick_36
 ; 4 + (4+4+5+4+5+4+5+3+3+4+5+4+4)+4+4+4+3
+.ident (.concat ("op_tick_54_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -915,9 +915,9 @@ tickident page, 8
     STA zpdummy ; 3
     STA zpdummy ; 3
 
-    BIT TICK ; 4
+    BIT tick ; 4
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; used >3 pad cycles between tick pair; can't branch to tail
     STA @D+2 ; 4
     LDA WDATA ; 4
     STA @D+1 ; 4
@@ -926,8 +926,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_56 page
-.ident (.concat ("op_tick_56_page_", .string(page))):
 ; 4+(4+4+5+4+5+4+5+4+5+4+4+4+4)+2+4+4+3
+.ident (.concat ("op_tick_56_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -945,7 +945,7 @@ tickident page, 8
     STA dummy ; 4
     BIT tick ; 4
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; used >3 pad cycles between tick pair; can't branch to tail
     NOP ; 2
 
     LDA WDATA ; 4
@@ -954,9 +954,9 @@ tickident page, 8
     JMP op_nop ; 3
 .endmacro
 
-.macro op_tick_58 page ; repeats from op_tick_40
-.ident (.concat ("op_tick_58_page_", .string(page))):
+.macro op_tick_58 page ; pattern repeats from op_tick_40
 ;4+(4+4+5+4+5+4+5+4+5+4+4+3+3+4)+4+4+3
+.ident (.concat ("op_tick_58_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -975,7 +975,7 @@ tickident page, 8
     STA zpdummy ; 3
     BIT tick ; 4
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; used >3 pad cycles between tick pair; can't branch to tail
     LDA WDATA ; 4
     STA @D+1 ; 4
 @D:
@@ -983,8 +983,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_60 page
-.ident (.concat ("op_tick_60_page_", .string(page))):
 ; 4+(4+4+5+4+5+4+5+4+5+4+4+4+4+4)+2+4+3
+.ident (.concat ("op_tick_60_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -1004,7 +1004,7 @@ tickident page, 8
     STA dummy ; 4
     BIT tick ; 4
 
-    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; used >3 pad cycles between tick pair; can't branch to tail
     NOP ; 2
     STA @D+1 ; 4
 @D:
@@ -1012,8 +1012,8 @@ tickident page, 8
 .endmacro
 
 .macro op_tick_62 page
-.ident (.concat ("op_tick_62_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4+4+3+3+4)+4+3
+.ident (.concat ("op_tick_62_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -1033,15 +1033,15 @@ tickident page, 8
     STA zpdummy ; 3
     BIT tick ; 4
     
-    ; used >3 pad cycles within tick loop; can't branch to tail
+    ; used >3 pad cycles between tick pair; can't branch to tail
     STA @D+1 ; 4
 @D:
     JMP op_nop ; 3
 .endmacro
 
 .macro op_tick_64 page
-.ident (.concat ("op_tick_64_page_", .string(page))):
 ;4+(4+4+5+4+5+4+5+4+5+4+4+4+4+4+4)+2+3
+.ident (.concat ("op_tick_64_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -1067,9 +1067,9 @@ tickident page, 8
     JMP op_nop ; 3
 .endmacro
 
-.macro op_tick_66 page ; repeats from op_tick_8
-.ident (.concat ("op_tick_66_page_", .string(page))):
+.macro op_tick_66 page ; pattern repeats from op_tick_8
 ; 4+(4+4+5+4+5+4+5+4+5+4+4+4+3+4+3+4)+3
+.ident (.concat ("op_tick_66_page_", .string(page))):
     BIT tick ; 4
     LDA WDATA ; 4
     LDY WDATA ; 4
@@ -1202,17 +1202,6 @@ op_tick_64 63
 op_tick_66 63
 
 op_ack:
-; MOVE ADDRESS POINTER 1 page further in socket buffer
-;    LDX WADRH ; socket pointer
-;    INX
-
-; UPDATE REXRD TO REFLECT DATA WE JUST READ
-
-; TODO: be careful about which registers we stomp here
-; - now we only care about maintaining X=0 so this is simpler
-
-; UPDATERXRD:
-
     BIT tick ; 4
 
     LDA WDATA ; 4 dummy read of second-last byte in TCP frame
@@ -1252,7 +1241,7 @@ op_ack:
     LDA #SCRECV ; 2
     STA WDATA ; 4
 
-    JMP CHECKRECV ; 3 (35 with following BIT TICK)
+    JMP CHECKRECV ; 3 (35 with following BIT tick)
 
 ; CLOSE TCP CONNECTION
 
