@@ -104,12 +104,15 @@ text = $c051
 fullscr = $c052
 tick = $c030
 
+; this is the main entrypoint
+
 .segment "LOWCODE"
 ; RESET AND CONFIGURE W5100
     JMP   RESET
 
 ; Put code only needed at startup in the HGR page, we'll toast it when we're
 ; done starting up
+
 .segment "HGR"
 
     LDA   #6    ; 5 RETRIES TO GET CONNECTION
@@ -264,7 +267,7 @@ SETUP:
 ;    LDA #$50 ; HIGH BYTE
 ;    STA PTR+1
 
-; init graphics
+; init graphics XXX
 ; default content value
     LDA #$7f
     PHA
@@ -272,9 +275,12 @@ SETUP:
 
 .segment "CODE"
 
+; XXX not really main loop
 MAINLOOP:
-    JSR hgr
+    JSR hgr ; this also nukes the startup code we placed in HGR segment
     STA fullscr
+
+; This is the main loop
 
 ; CHECK FOR ANY RECEIVED DATA
 
@@ -291,6 +297,7 @@ CHECKRECV:
     STA WADRL ; 4
     LDA WDATA       ; 4 HIGH BYTE OF RECEIVED SIZE
     ORA WDATA       ; 4 LOW BYTE
+    ; XXX assume data
     BEQ NORECV      ; 2 NO DATA TO READ
 
     JMP RECV        ; 3 THERE IS DATA
@@ -299,7 +306,8 @@ NORECV:
     ; XXX needed?
     NOP ; LITTLE DELAY ...
     NOP
-    
+
+    ; XXX how often does this happen?
 
     JMP CHECKRECV   ; CHECK AGAIN
 
@@ -355,15 +363,13 @@ RECV:
     ;JSR DEBUG ; UNCOMMENT FOR W5100 DEBUG INFO
     LDA GETSTARTADR+1 ; 4 HIGH BYTE FIRST
 
+    BIT tick ; 4 (36)
     STA WADRH ;4
-    BIT tick ; 4 (40)
 
     LDA GETSTARTADR ; 4
     STA WADRL ; 4
 
-    ; restore content
-    PLA ; 4
-    ; fall through
+    ; restore invariant expected by inner loop
     LDX #$00 ; 2
 
 ;4 stores:
@@ -379,13 +385,14 @@ RECV:
 
 ; XXX should fall through to op_tick_36?  Since this is the 50% duty cycle case
 
+; XXX pad to 73 cycles since it will mess with the audio
 op_nop:
     LDY WDATA ; 4
     STY @D+2 ; 4
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    JMP op_nop ; 3
+    JMP op_nop ; 3 ; 37 with following TICK
 
 .macro ticklabel page, cycles_left
     .concat ("_op_tick_page_", .string(page), "_tail_", .string(cycles_left))
@@ -1088,6 +1095,7 @@ tickident page, 8
     JMP op_nop ; 3
 .endmacro
 
+; convenience macro for enumerating all tick opcodes for a page
 .macro op_tick page
 op_tick_4 page
 op_tick_6 page
@@ -1122,6 +1130,8 @@ op_tick_62 page
 op_tick_64 page
 op_tick_66 page
 .endmacro
+
+; now pack the tick opcodes into memory
 
 .segment "LOWCODE"
 op_tick 32
@@ -1199,9 +1209,14 @@ op_ack:
 ; UPDATE REXRD TO REFLECT DATA WE JUST READ
 
 ; TODO: be careful about which registers we stomp here
+; - now we only care about maintaining X=0 so this is simpler
+
 ; UPDATERXRD:
 
     BIT tick ; 4
+
+    LDA WDATA ; 4 dummy read of second-last byte in TCP frame
+    LDA WDATA ; 4 dummy read of last byte in TCP frame
 
     CLC ; 2
     LDA #>S0RXRD ; 2 NEED HIGH BYTE HERE
@@ -1209,21 +1224,20 @@ op_ack:
     LDA #<S0RXRD ; 2
 
     STA WADRL ; 4
-    LDA WDATA ; 4
+    LDA WDATA ; 4 HIGH BYTE
+    ;TAY ; 2 SAVE
+    LDX WDATA ; 4 LOW BYTE ; needed?  I don't think so
+    ;BEQ @1 ; 3
+    ;BRK
+;@1:
+
+    ;ADC #$00 ; 2 GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
+
+    ;TAX ; 2 SAVE
+    ;TYA ; 2 GET HIGH BYTE BACK
+    ADC #$08 ; 2 GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIZE
+    BIT tick ; 4 (36) ; don't mess with Carry prior to ADC
     TAY ; 2 SAVE
-    LDA WDATA ; 4 LOW BYTE ; needed?  I don't think so
-    BEQ @1 ; 3
-    BRK
-@1:
-
-    ADC #$00 ; 2 GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
-
-    TAX ; 2 SAVE
-    TYA ; 2 GET HIGH BYTE BACK
-    ADC #$08 ;2 GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIZE
-    BIT tick ; 4 (39) ; don't mess with Carry prior to ADC
-    TAY ; 2 SAVE
-
 
     LDA #<S0RXRD ; 2
     STA WADRL ; 4 XXX already there?
