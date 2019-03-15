@@ -5,7 +5,16 @@
 ;  Copyright © 2019 Kris Kennaway. All rights reserved.
 ;
 ;  W5100/Uthernet II code based on "TCP SOCKET DEMO FOR W5100/UTHERNET II" by D. Finnigan.
-
+;
+;  Multiplexed audio/video decoder for 64K, 1MHz Apple II systems with Uthernet II,
+;  supporting:
+;  - 5 bit DAC audio at ~14KHz
+;  - 56 KB/sec video update bandwidth
+;
+; This is sufficient for ~7.5 full page redraws of the hires screen per second, although the
+; effective frame rate is typically higher, when there are only partial changes between
+; frames.
+;
 ; Fitting this in 64K together with ProDOS is pretty tight.  We make use of 3 memory
 ; segments:
 ;
@@ -285,15 +294,27 @@ init_mainloop:
 ;     via STA foo,X (5 cycles) instead of STA foo (4 cycles)
 ;
 ; During the ACK opcode and subsequent outer loop transit, we keep ticking the speaker
-; every 36/37 cycles to maintain a multiple of 73 cycles
-; XXX is it actually an integer multiple?
+; every 36/37 cycles to maintain a multiple of 73 cycles.  Because we guarantee that the ACK
+; appears every 2048 bytes, this lets us simplify the accounting for the W5100 socket buffer
+; management (moving the address pointer etc).
 
-;4 stores:
-;- 73 cycles
-;- 14364 Hz
-;- 57456 stores/sec
-;- 5 bit DAC
-
+; Somewhat magically, the cycle timings all align on multiples of 73 (with tick intervals
+; alternating 36 and 37 cycles, as in the "neutral" (i.e. 50% speaker duty cycle)
+; op_tick_36_* opcodes), without much work needed to optimize this. I'm pretty sure there's
+; still "unnecessary" work being done (e.g. low address bytes that are always 0) but there's
+; need to work harder since we'd end up having to pad them back anyway.
+;
+; With a 73 cycle fundamental opcode (speaker) period and 1MHz clock speed, this gives a
+; 14364 Hz "carrier" for the audio DAC, which is slightly audible (at least to my ageing
+; ears) but quite acceptable.
+;
+; i.e. we get about 14364 player opcodes/second, with the ACK "slow path" costing 6 opcodes.
+; Each of the "fat" audio/video opcodes results in storing 4 video bytes, so we store
+; about 56KB of video data per second.
+;
+; With 192x40 = 7680 visible bytes on the hires screen, this means we can do about 7.5 full
+; page redraws/sec; but the effective frame rate will usually be much higher than this
+; since we only prioritize the parts of the screen that are changing between frames.
 
 ; Check for any received data
 CHECKRECV:
@@ -1201,6 +1222,11 @@ op_tick_62 63
 op_tick_64 63
 op_tick_66 63
 
+; Manage W5100 socket buffer and ACK TCP stream.
+;
+; In order to simplify the buffer management we expect this ACK opcode to consume
+; the last 4 bytes in a 2K "TCP frame".  i.e. we can assume that we need to consume
+; exactly 2K from the W5100 socket buffer.
 op_ack:
     BIT tick ; 4
 
@@ -1214,26 +1240,17 @@ op_ack:
 
     STA WADRL ; 4
     LDA WDATA ; 4 HIGH BYTE
-    ;TAY ; 2 SAVE
-    LDX WDATA ; 4 LOW BYTE ; needed?  I don't think so
-    ;BEQ @1 ; 3
-    ;BRK
-;@1:
+    LDX WDATA ; 4 LOW BYTE ; not sure if needed -- but we have cycles to spare so who cares!
 
-    ;ADC #$00 ; 2 GETSIZE ; ADD LOW BYTE OF RECEIVED SIZE
-
-    ;TAX ; 2 SAVE
-    ;TYA ; 2 GET HIGH BYTE BACK
-    ADC #$08 ; 2 GETSIZE+1 ; ADD HIGH BYTE OF RECEIVED SIZE
-    BIT tick ; 4 (36) ; don't mess with Carry prior to ADC
+    ADC #$08 ; 2 ADD HIGH BYTE OF RECEIVED SIZE
+    BIT tick ; 4 (36)
     TAY ; 2 SAVE
 
     LDA #<S0RXRD ; 2
-    STA WADRL ; 4 XXX already there?
+    STA WADRL ; 4 Might not be needed, but have cycles to spare
 
     STY WDATA ; 4 SEND HIGH BYTE
     STX WDATA ; 4 SEND LOW BYTE
-
 
 ; SEND THE RECV COMMAND
     LDA #<S0CR ; 2
@@ -1241,7 +1258,9 @@ op_ack:
     LDA #SCRECV ; 2
     STA WDATA ; 4
 
-    JMP CHECKRECV ; 3 (35 with following BIT tick)
+    NOP ; 2 ; see, we even have cycles left over!
+
+    JMP CHECKRECV ; 3 (37 with following BIT tick)
 
 ; CLOSE TCP CONNECTION
 
@@ -1269,44 +1288,5 @@ CLOSECONN:
 ;    BNE @L  ; DON'T WAIT FOREVER
 ;ISCLOSED:
 ;    RTS ; SOCKET IS CLOSED
-
-; SUPPORT SUBROUTINE: CLEANOUT
-; "CLEANS UP" OUTPUT FOR THE APPLE BY
-; SETTING THE HIGH BIT AND DOING SOME SUBSTITUTIONS
-;CLEANOUT:
-;    ORA #%10000000 ; SET HIGH BIT
-;    CMP #$8A ; NEWLINE?
-;    BNE @OUT
-;    LDA #$8D ; CONVERT TO <CR>
-;@OUT:
-;    JMP COUT ; THIS WILL DO THE RTS
-
-; DEBUG - PRINT W5100 STARTADR AND SIZE
-;DEBUG:
-;    LDA #$A0 ; " "
-;    JSR COUT
-;    LDA #$A4 ; "$"
-;    JSR COUT
-;    LDA GETOFFSET+1
-;    LDX GETOFFSET
-;    JSR PRNTAX
-
-;    LDA #$A0 ; " "
-;    JSR COUT
-;    LDA #$A4 ; "$"
-;    JSR COUT
-;    LDA GETSTARTADR+1
-;    LDX GETSTARTADR
-;    JSR PRNTAX
-
-;    LDA #$A0 ; " "
-;    JSR COUT
-;    LDA #$A4 ; "$"
-;   JSR COUT
-;LDA GETSIZE+1
-;    LDX GETSIZE
-;    JSR PRNTAX
-;    LDA #$8D
-;    JMP COUT ; THIS WILL DO THE RTS
 
 .endproc
