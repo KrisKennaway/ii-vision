@@ -115,6 +115,11 @@ class Ack(Opcode):
     COMMAND = OpcodeCommand.ACK
     _CYCLES = 100  # TODO: count
 
+    def emit_data(self) -> Iterator[int]:
+        # Dummy bytes to pad out TCP frame
+        yield 0xff
+        yield 0xff
+
     def __data_eq__(self, other):
         return True
 

@@ -57,12 +57,7 @@ class Movie:
             # Keep track of where we are in TCP client socket buffer
             socket_pos = self.stream_pos % 2048
             if socket_pos >= 2044:
-                # Pad out to last byte in frame
-                nops = (2047 - socket_pos) // 2
-                # print("At position %04x, padding with %d nops" % (
-                #    socket_pos, nops))
-                for _ in range(nops):
-                    yield from self._emit_bytes(opcodes.Nop())
+                # 2 dummy bytes + 2 address bytes for next opcode
                 yield from self._emit_bytes(opcodes.Ack())
             yield from self._emit_bytes(op)
 
