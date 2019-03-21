@@ -35,11 +35,11 @@ class Video:
         # TODO: possible to compute time offset for each frame instead?
         data = skvideo.io.ffprobe(self.filename)['video']
         rate_data = data['@r_frame_rate'].split("/")  # e.g. 12000/1001
-        self._input_frame_rate = float(
+        self.input_frame_rate = float(
             rate_data[0]) / float(rate_data[1])  # type: float
 
         self.cycles_per_frame = (
-                self.CLOCK_SPEED / self._input_frame_rate)  # type: float
+                self.CLOCK_SPEED / self.input_frame_rate)  # type: float
         self.frame_number = 0  # type: int
 
         # Initialize empty screen
