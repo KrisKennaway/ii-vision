@@ -18,12 +18,18 @@ parser.add_argument(
     '--audio_normalization', type=float, default=None,
     help='Override auto-detected multiplier for audio normalization.'
 )
-
+parser.add_argument(
+    '--every_n_video_frames', type=int, default=1,
+    help='Allows skipping frames of input video to lower effective output '
+         'frame rate, which may give better quality for some videos.'
+)
 
 def main(args):
     filename = args.input
     m = movie.Movie(
-        filename, audio_normalization=args.audio_normalization)
+        filename,
+        every_n_video_frames=args.every_n_video_frames,
+        audio_normalization=args.audio_normalization)
 
     max_bytes_out = 1024. * 1024 * args.max_output_mb
 
