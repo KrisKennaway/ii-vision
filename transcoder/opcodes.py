@@ -1,3 +1,5 @@
+"""Opcodes representing discrete operations of video player."""
+
 import enum
 from typing import Iterator, Tuple
 

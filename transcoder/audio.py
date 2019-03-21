@@ -1,3 +1,5 @@
+"""Encodes input audio stream into sequence of speaker duty cycle counts."""
+
 from typing import Iterator
 
 import audioread

@@ -1,3 +1,5 @@
+"""Tests for the opcodes module."""
+
 import unittest
 
 import opcodes

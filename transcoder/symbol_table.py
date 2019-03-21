@@ -1,3 +1,5 @@
+"""Parses the cc65 .dbg output to extract symbol addresses."""
+
 from typing import Dict
 
 

@@ -1,3 +1,5 @@
+"""Tests for the video module."""
+
 import unittest
 
 import video

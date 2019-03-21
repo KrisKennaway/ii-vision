@@ -1,3 +1,5 @@
+"""Encode a sequence of images as an optimized stream of screen changes."""
+
 import heapq
 import os
 import queue

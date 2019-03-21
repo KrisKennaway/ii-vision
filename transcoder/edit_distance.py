@@ -1,3 +1,5 @@
+"""Computes visual differences between screen image data."""
+
 import functools
 
 import numpy as np

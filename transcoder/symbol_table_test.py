@@ -1,3 +1,5 @@
+"""Tests for the symbol_table module."""
+
 import io
 import unittest
 
