@@ -3,6 +3,7 @@
 from typing import Iterable, Iterator
 
 import audio
+import machine
 import opcodes
 import video
 
@@ -18,9 +19,9 @@ class Movie:
 
         self.stream_pos = 0  # type: int
 
-        self.cycle_counter = opcodes.CycleCounter()
+        self.cycle_counter = machine.CycleCounter()
 
-        self.state = opcodes.State(
+        self.state = machine.Machine(
             self.cycle_counter,
             self.video.memory_map,
             self.video.update_priority
