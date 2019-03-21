@@ -23,7 +23,10 @@ class Video:
 
     CLOCK_SPEED = 1024 * 1024  # type: int
 
-    def __init__(self, filename: str):
+    def __init__(
+            self,
+            filename: str,
+    ):
         self.filename = filename  # type: str
 
         self._reader = skvideo.io.FFmpegReader(filename)
@@ -185,9 +188,15 @@ class Video:
             # Clear priority for the offset we're emitting
             self.update_priority[page, offset] = 0
             self.memory_map.page_offset[page, offset] = content
+            diff_weights[page, offset] = 0
+
+            # Make sure we don't emit this offset as a side-effect of some
+            # other offset later.
+            for cd in content_deltas.values():
+                cd[page, offset] = 0
 
             # Need to find 3 more offsets to fill this opcode
-            for o, p in self._compute_error(
+            for o in self._compute_error(
                     page,
                     content,
                     target,
@@ -195,11 +204,24 @@ class Video:
                     content_deltas
             ):
                 offsets.append(o)
+
+                # Compute new edit distance between new content and target
+                # byte, so we can reinsert with this value
+                p = edit_distance.edit_weight(
+                    content, target.page_offset[page, o], o % 2 == 1,
+                    error=False)
+
                 # Update priority for the offset we're emitting
-                self.update_priority[page, o] = 0  # XXX p
+                self.update_priority[page, o] = p  # 0
+
                 self.memory_map.page_offset[page, o] = content
-                # heapq.heappush(priorities, (-p, random.random(), page,
-                # offset))
+
+                if p:
+                    # This content byte introduced an error, so put back on the
+                    # heap in case we can get back to fixing it exactly
+                    # during this frame.  Otherwise we'll get to it later.
+                    heapq.heappush(
+                        priorities, (-p, random.random(), page, offset))
 
             # Pad to 4 if we didn't find enough
             for _ in range(len(offsets), 4):
@@ -217,7 +239,7 @@ class Video:
             source: screen.MemoryMap,
             target: screen.MemoryMap
     ):
-        return edit_distance.array_edit_weight(
+        return edit_distance.screen_edit_distance(
             source.page_offset, target.page_offset)
 
     def _heapify_priorities(self) -> List:
@@ -244,13 +266,14 @@ class Video:
         """
         This function is the critical path for the video encoding.
         """
-        return edit_distance.content_edit_weight(content, target) - old
+        return edit_distance.byte_screen_error_distance(content, target) - old
 
     _OFFSETS = np.arange(256)
 
     def _compute_error(self, page, content, target, old_error, content_deltas):
         offsets = []
 
+        # TODO: move this up into parent
         delta_screen = content_deltas.get(content)
         if delta_screen is None:
             delta_screen = self._compute_delta(
@@ -260,17 +283,24 @@ class Video:
         delta_page = delta_screen[page]
         cond = delta_page < 0
         candidate_offsets = self._OFFSETS[cond]
-        priorities = self.update_priority[page][cond]
+        priorities = delta_page[cond]
 
         l = [
-            (-priorities[i], random.random(), candidate_offsets[i])
+            (priorities[i], random.random(), candidate_offsets[i])
             for i in range(len(candidate_offsets))
         ]
         heapq.heapify(l)
 
         while l:
-            p, _, o = heapq.heappop(l)
-            offsets.append((o, -p))
+            _, _, o = heapq.heappop(l)
+            offsets.append(o)
+
+            # Make sure we don't end up considering this (page, offset) again
+            # until the next image frame.  Even if a better match comes along,
+            # it's probably better to fix up some other byte.
+            for cd in content_deltas.values():
+                cd[page, o] = 0
+
             if len(offsets) == 3:
                 break
 
