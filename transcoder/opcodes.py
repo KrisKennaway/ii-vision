@@ -156,7 +156,7 @@ for _tick in range(4, 68, 2):
         TICK_OPCODES[(_tick, _page)] = cls
 
 
-def _ParseSymbolTable():
+def _parse_symbol_table():
     """Read symbol table from video player debug file."""
 
     opcode_data = {}
@@ -168,34 +168,24 @@ def _ParseSymbolTable():
 
             opcode_data.setdefault(op_name, {})["start"] = start_addr
 
-        if name.startswith("\"end_"):
-            op_name = name[5:-1]
-            end_addr = int(data["val"], 16) - 1
-
-            opcode_data.setdefault(op_name, {})["end"] = end_addr
-
     opcode_addrs = []
     for op_name, addrs in opcode_data.items():
         for op in OpcodeCommand:
             if op.name.lower() != op_name:
                 continue
-            opcode_addrs.append(
-                (op, addrs["start"], addrs.get("end")))
+            opcode_addrs.append((op, addrs["start"]))
 
     return sorted(opcode_addrs, key=lambda x: (x[1], x[2]))
 
 
-def _FillOpcodeAddresses():
-    """Populate _START and _END on opcodes from symbol table."""
-    idx = 0
-    for op, start, end in _OPCODE_ADDRS:
+def _fill_opcode_addresses():
+    """Populate _START on opcodes from symbol table."""
+    for op, start in _OPCODE_ADDRS:
         cls = _OPCODE_CLASSES[op]
         cls._START = start
-        cls._END = end
-        idx += 1
 
 
-_OPCODE_ADDRS = _ParseSymbolTable()
+_OPCODE_ADDRS = _parse_symbol_table()
 _OPCODE_CLASSES = {
     OpcodeCommand.TERMINATE: Terminate,
     OpcodeCommand.NOP: Nop,
@@ -206,4 +196,4 @@ for _tick in range(4, 68, 2):
     for _page in range(32, 64):
         _tickop = OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
         _OPCODE_CLASSES[_tickop] = TICK_OPCODES[(_tick, _page)]
-_FillOpcodeAddresses()
+_fill_opcode_addresses()
