@@ -12,9 +12,7 @@ from PIL import Image
 import numpy as np
 import skvideo.io
 
-import edit_distance
-import opcodes
-import screen
+from transcoder import opcodes, screen, edit_distance
 
 
 class Video:

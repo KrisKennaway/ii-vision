@@ -1,10 +1,6 @@
 import unittest
 
-import numpy as np
-
-import opcodes
-import screen
-import video
+from transcoder import video
 
 
 class TestHammingWeight(unittest.TestCase):

@@ -2,8 +2,7 @@ import enum
 import numpy as np
 from typing import Iterator, Tuple
 
-import screen
-import symbol_table
+from transcoder import screen, symbol_table
 
 
 class CycleCounter:
