@@ -1,8 +1,10 @@
 import enum
-import numpy as np
 from typing import Iterator, Tuple
 
-from transcoder import screen, symbol_table
+import numpy as np
+
+import screen
+import symbol_table
 
 
 class CycleCounter:
@@ -159,7 +161,7 @@ def _ParseSymbolTable():
 
     opcode_data = {}
     for name, data in symbol_table.SymbolTable(
-            "audiotest/audiotest/audiotest.dbg").parse().items():
+            "player/iivision.dbg").parse().items():
         if name.startswith("\"op_"):
             op_name = name[4:-1]
             start_addr = int(data["val"], 16)

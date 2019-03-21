@@ -1,6 +1,6 @@
 import unittest
 
-from transcoder import opcodes
+import opcodes
 
 
 class TestOpcodes(unittest.TestCase):

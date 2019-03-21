@@ -1,18 +1,19 @@
 import heapq
-import random
 import os
-import threading
 import queue
+import random
 import subprocess
-
+import threading
 from typing import List, Iterator, Tuple
 
-from PIL import Image
 # import hitherdither
 import numpy as np
 import skvideo.io
+from PIL import Image
 
-from transcoder import opcodes, screen, edit_distance
+import edit_distance
+import opcodes
+import screen
 
 
 class Video:

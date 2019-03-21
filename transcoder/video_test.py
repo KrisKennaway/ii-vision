@@ -1,6 +1,6 @@
 import unittest
 
-from transcoder import video
+import video
 
 
 class TestHammingWeight(unittest.TestCase):

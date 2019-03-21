@@ -1,7 +1,7 @@
 import io
 import unittest
 
-from transcoder import symbol_table
+import symbol_table
 
 DEBUG_FILE = """
 version major=2,minor=0

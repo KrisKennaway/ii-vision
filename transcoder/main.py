@@ -2,7 +2,7 @@
 
 import argparse
 
-from transcoder import movie
+import movie
 
 parser = argparse.ArgumentParser(
     description='Transcode videos to ][Vision format.')

@@ -2,7 +2,9 @@
 
 from typing import Iterable, Iterator
 
-from transcoder import video, opcodes, audio
+import audio
+import opcodes
+import video
 
 
 class Movie:
