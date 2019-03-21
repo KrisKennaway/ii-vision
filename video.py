@@ -8,6 +8,7 @@ import subprocess
 from typing import List, Iterator, Tuple
 
 from PIL import Image
+# import hitherdither
 import numpy as np
 import skvideo.io
 
@@ -34,7 +35,7 @@ class Video:
             rate_data[0]) / float(rate_data[1])  # type: float
 
         self.cycles_per_frame = (
-                1024. * 1024 / self._input_frame_rate)  # type: float
+                self.CLOCK_SPEED / self._input_frame_rate)  # type: float
         self.frame_number = 0  # type: int
 
         # Initialize empty screen
@@ -50,9 +51,43 @@ class Video:
             return True
         return False
 
-    def _frame_grabber(self) -> Iterator[Image]:
+    def _frame_grabber(self) -> Iterator[Image.Image]:
         for frame_array in self._reader.nextFrame():
             yield Image.fromarray(frame_array)
+
+    @staticmethod
+    def _rgb(r,g,b):
+        return (r << 16) + (g << 8) + b
+
+    # def dither_framesframes(self) -> Iterator[screen.MemoryMap]:
+    #     palette = hitherdither.palette.Palette(
+    #         [
+    #             self._rgb(0,0,0),           # black */
+    #             self._rgb(148,12,125),  # red - hgr 0*/
+    #             self._rgb(32,54,212),   # dk blue - hgr 0 */
+    #             self._rgb(188,55,255),  # purple - default HGR overlay color */
+    #             self._rgb(51,111,0),    # dk green - hgr 0 */
+    #             self._rgb(126,126,126), # gray - hgr 0 */
+    #             self._rgb(7,168,225),   # med blue - alternate HGR overlay
+    #             # color */
+    #             self._rgb(158,172,255), # lt blue - hgr 0 */
+    #             self._rgb(99,77,0),     # brown - hgr 0 */
+    #             self._rgb(249,86,29),   # orange */
+    #             self._rgb(126,126,126), # grey - hgr 0 */
+    #             self._rgb(255,129,236), # pink - hgr 0 */
+    #             self._rgb(67,200,0),    # lt green */
+    #             self._rgb(221,206,23),  # yellow - hgr 0 */
+    #             self._rgb(93,248,133),  # aqua - hgr 0 */
+    #             self._rgb(255,255,255)  # white
+    #         ]
+    #     )
+    #     for _idx, _frame in enumerate(self._frame_grabber()):
+    #         if _idx % 60 == 0:
+    #             img_dithered = hitherdither.ordered.yliluoma.yliluomas_1_ordered_dithering(
+    #                 _frame.resize((280,192), resample=Image.NEAREST),
+    #                 palette, order=8)
+    #
+    #             yield img_dithered
 
     def frames(self) -> Iterator[screen.MemoryMap]:
         """Encode frame to HGR using bmp2dhr.
@@ -151,7 +186,7 @@ class Video:
             self.memory_map.page_offset[page, offset] = content
 
             # Need to find 3 more offsets to fill this opcode
-            for o in self._compute_error(
+            for o, p in self._compute_error(
                     page,
                     content,
                     target,
@@ -159,9 +194,11 @@ class Video:
                     content_deltas
             ):
                 offsets.append(o)
-                # Clear priority for the offset we're emitting
-                self.update_priority[page, o] = 0
+                # Update priority for the offset we're emitting
+                self.update_priority[page, o] = 0  # XXX p
                 self.memory_map.page_offset[page, o] = content
+                # heapq.heappush(priorities, (-p, random.random(), page,
+                # offset))
 
             # Pad to 4 if we didn't find enough
             for _ in range(len(offsets), 4):
@@ -231,8 +268,8 @@ class Video:
         heapq.heapify(l)
 
         while l:
-            _, _, o = heapq.heappop(l)
-            offsets.append(o)
+            p, _, o = heapq.heappop(l)
+            offsets.append((o, -p))
             if len(offsets) == 3:
                 break
 
