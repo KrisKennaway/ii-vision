@@ -25,9 +25,6 @@ class Opcode:
     # Offset of start byte in decoder opcode
     _START = None  # type: int
 
-    # Offset of last byte in decoder opcode
-    _END = None  # type: int
-
     def __repr__(self):
         return "Opcode(%s)" % self.COMMAND.name
 
@@ -107,14 +104,14 @@ TICK_OPCODES = {}
 
 for _tick in range(4, 68, 2):
     for _page in range(32, 64):
-        cls = type(
+        _cls = type(
             "Tick%dPage%d" % (_tick, _page),
             (BaseTick,),
             {
                 "COMMAND": OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
             }
         )
-        TICK_OPCODES[(_tick, _page)] = cls
+        TICK_OPCODES[(_tick, _page)] = _cls
 
 
 def _parse_symbol_table():
