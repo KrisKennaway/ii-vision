@@ -58,7 +58,6 @@ def byte_to_nominal_colour_string(b: int, is_odd_offset: bool) -> str:
     return "".join(pixels)
 
 
-
 @functools.lru_cache(None)
 def byte_to_colour_string_with_white_coalescing(
         b: int, is_odd_offset: bool) -> str:
@@ -105,7 +104,7 @@ def byte_to_colour_string_with_white_coalescing(
 
     nominal = byte_to_nominal_colour_string(b, is_odd_offset)
     for idx in range(3):
-        pair = nominal[idx:idx+2]
+        pair = nominal[idx:idx + 2]
         effective = fringing.get(pair)
         if not effective:
             e = []
@@ -186,6 +185,7 @@ _error_ewm = edit_weight_matrixes(True)
 def edit_weight(a: int, b: int, is_odd_offset: bool, error: bool):
     e = _error_ewm if error else _ewm
     return e[a, b, int(is_odd_offset)]
+
 
 _even_ewm = {}
 _odd_ewm = {}
