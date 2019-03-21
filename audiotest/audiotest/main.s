@@ -30,6 +30,27 @@
 
 .proc main
 
+.segment "HGR"
+
+; TODO: make these configurable
+SRCADDR:  .byte   $C0,$A8,$01,147            ; 192.168.1.147  W5100 IP
+FADDR:    .byte   $C0,$A8,$01,15             ; 192.168.1.15   FOREIGN IP
+FPORT:    .byte   $b9,$07                    ; 1977           FOREIGN PORT
+MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
+
+; SLOT 1 I/O ADDRESSES FOR THE W5100
+; Change this to support the Uthernet II in another slot
+;
+; TODO: make slot I/O addresses customizable at runtime - would probably require somehow
+; compiling a list of all of the binary offsets at which we reference $C09x and patching
+; them in memory or on-disk.
+WMODE = $C094
+WADRH = $C095
+WADRL = $C096
+WDATA = $C097
+
+;;;
+
 hgr = $f3e2
 fullscr = $c052
 tick = $c030 ; where the magic happens
@@ -37,14 +58,6 @@ tick = $c030 ; where the magic happens
 ; some dummy addresses in order to pad cycle counts
 zpdummy = $00
 dummy = $ffff
-
-; TODO: make slot I/O addresses customizable
-
-; SLOT 1 I/O ADDRESSES FOR THE W5100
-WMODE = $C094
-WADRH = $C095
-WADRL = $C096
-WDATA = $C097
 
 ; W5100 LOCATIONS
 MACADDR  =   $0009    ; MAC ADDRESS
@@ -117,12 +130,6 @@ GETSTARTADR = $0C ; 2 BYTES FOR PHYSICAL ADDR
 ; Put code only needed at startup in the HGR page, we'll toast it when we're
 ; done starting up
 .segment "HGR"
-
-; TODO: make these configurable
-SRCADDR:  .byte   $C0,$A8,$01,147   ; 192.168.2.5  W5100 IP
-FADDR:    .byte   $C0,$A8,$01,15   ; 192.168.2.1   FOREIGN IP
-FPORT:    .byte   $4E,$20       ; 20000 FOREIGN PORT
-MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
 
 ; RESET AND CONFIGURE W5100
 bootstrap:
