@@ -16,7 +16,8 @@ class Audio:
         self.cycles_per_tick = 73  # type: int
 
         # TODO: round to divisor of video frame rate
-        self.sample_rate = 14340  # int(1024. * 1024 / self.cycles_per_tick)
+        self.sample_rate = 14340  # int(1024. * 1024 /
+        # self.cycles_per_tick)
 
         self.normalization = (
                 normalization or self._normalization())  # type: float
@@ -45,7 +46,6 @@ class Audio:
                     break
         a = self._decode(f, raw)
         norm = np.max(np.abs(np.percentile(a, [2.5, 97.5])))
-        assert norm
 
         return 16384. / norm
 
