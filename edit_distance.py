@@ -5,7 +5,21 @@ import weighted_levenshtein
 
 
 @functools.lru_cache(None)
-def byte_to_colour_string(b: int, is_odd_offset: bool) -> str:
+def byte_to_nominal_colour_string(b: int, is_odd_offset: bool) -> str:
+    """Compute nominal pixel colours for a byte.
+
+    This ignores any fringing/colour combining effects, as well as
+    half-ignoring what happens to the colour pixel that crosses the byte
+    boundary.
+
+    A better implementation of this might be to consider neighbouring (even,
+    odd) column bytes together since this will allow correctly colouring the
+    split pixel in the middle.
+
+    There are also even weirder colour artifacts that happen when
+    neighbouring bytes have mismatched colour palettes, which also cross the
+    odd/even boundary.  But these may not be worth worrying about.
+    """
     pixels = []
 
     idx = 0
@@ -38,16 +52,87 @@ def byte_to_colour_string(b: int, is_odd_offset: bool) -> str:
         idx += 2
 
     if not is_odd_offset:
-        pixels.append("01"[b & 0x40 != 0])
+        pixels.append("01"[(b & 0x40) != 0])
         idx += 1
 
     return "".join(pixels)
 
 
-# TODO: what about increasing transposition cost?  Might be better to have
-# any pixel at the right place even if the wrong colour?
+
+@functools.lru_cache(None)
+def byte_to_colour_string_with_white_coalescing(
+        b: int, is_odd_offset: bool) -> str:
+    """Model the combining of neighbouring 1 bits to produce white.
+
+    The output is a string of length 7 representing the 7 display dots that now
+    have colour.
+
+    Attempt to model the colour artifacting that consecutive runs of
+    1 bits are coerced to white.  This isn't quite correct since:
+
+    a) it doesn't operate across byte boundaries (see note on
+    byte_to_nominal_colour_string)
+
+    b) a sequence like WVV appears more like WWWVVV or WWVVVV rather than WWWKVV
+    (at least on the //gs)
+
+    It also ignores other colour fringing e.g. from NTSC artifacts.
+
+    TODO: this needs more work.
+    """
+
+    pixels = []
+
+    fringing = {
+        "1V": "WWK",  # 110
+        "1W": "WWW",  # 111
+
+        "1B": "WWB",  # 110
+
+        "WV": "WWWK",  # 1110
+        "WB": "WWWK",  # 1110
+
+        "GV": "KWWK",  # 0110
+        "OB": "KWWK",  # 0110
+
+        "GW": "KWWW",  # 0111
+        "OW": "KWWW",  # 0111
+
+        "W1": "WWW",  # 111
+        "G1": "KWW",  # 011
+        "O1": "KWW",  # 011
+    }
+
+    nominal = byte_to_nominal_colour_string(b, is_odd_offset)
+    for idx in range(3):
+        pair = nominal[idx:idx+2]
+        effective = fringing.get(pair)
+        if not effective:
+            e = []
+            if pair[0] in {"0", "1"}:
+                e.append(pair[0])
+            else:
+                e.extend([pair[0], pair[0]])
+            if pair[1] in {"0", "1"}:
+                e.append(pair[1])
+            else:
+                e.extend([pair[1], pair[1]])
+            effective = "".join(e)
+
+        if pixels:
+            pixels.append(effective[2:])
+        else:
+            pixels.append(effective)
+
+    return "".join(pixels)
+
 
 substitute_costs = np.ones((128, 128), dtype=np.float64)
+
+# Substitution costs to use when evaluating other potential offsets at which
+# to store a content byte.  We penalize more harshly for introducing
+# errors that alter pixel colours, since these tend to be very
+# noticeable as visual noise.
 error_substitute_costs = np.ones((128, 128), dtype=np.float64)
 
 # Penalty for turning on/off a black bit
@@ -70,8 +155,8 @@ delete_costs = np.ones(128, dtype=np.float64) * 1000
 
 
 def _edit_weight(a: int, b: int, is_odd_offset: bool, error: bool):
-    a_pixels = byte_to_colour_string(a, is_odd_offset)
-    b_pixels = byte_to_colour_string(b, is_odd_offset)
+    a_pixels = byte_to_colour_string_with_white_coalescing(a, is_odd_offset)
+    b_pixels = byte_to_colour_string_with_white_coalescing(b, is_odd_offset)
 
     dist = weighted_levenshtein.dam_lev(
         a_pixels, b_pixels,
