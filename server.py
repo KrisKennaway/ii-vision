@@ -1,17 +1,24 @@
+import argparse
 import socketserver
-import sys
-
-ADDR = "192.168.1.15"
-PORT = 20000
 
 
-def main(argv):
-    serve_file = argv[1]
+parser = argparse.ArgumentParser(
+    description='Serve a video to ][Vision clients.')
+parser.add_argument(
+    'input', help='Path to input video file.')
+parser.add_argument(
+    '--port', type=int,
+    # 6502 is used by ADTPro so use another nice number
+    default=1977,
+    help='Port number to serve on.')
+
+
+def main(args):
+    serve_file = args.input
 
     def handler():
         class ChunkHandler(socketserver.BaseRequestHandler):
             def handle(self):
-
                 with open(serve_file, "rb") as f:
                     data = f.read()
                     print("Sending %d bytes" % len(data))
@@ -20,7 +27,7 @@ def main(argv):
         return ChunkHandler
 
     with socketserver.TCPServer(
-            (ADDR, PORT), handler(),
+            ("0.0.0.0", args.port), handler(),
             bind_and_activate=False) as server:
         server.allow_reuse_address = True
         server.server_bind()
@@ -29,4 +36,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(sys.argv)
+    main(parser.parse_args())
