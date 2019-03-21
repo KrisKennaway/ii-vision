@@ -25,6 +25,12 @@ class Audio:
                 normalization or self._normalization())  # type: float
 
     def _decode(self, f, buf) -> np.array:
+        """
+
+        :param f:
+        :param buf:
+        :return:
+        """
         data = np.frombuffer(buf, dtype='int16').astype(
             'float32').reshape((f.channels, -1), order='F')
 
@@ -39,6 +45,9 @@ class Audio:
 
         We compute the 2.5th and 97.5th percentiles i.e. only 2.5% of samples
         will clip.
+
+        :param read_bytes:
+        :return:
         """
         raw = bytearray()
         with audioread.audio_open(self.filename) as f:
@@ -52,6 +61,10 @@ class Audio:
         return 16384. / norm
 
     def audio_stream(self) -> Iterator[int]:
+        """
+
+        :return:
+        """
         with audioread.audio_open(self.filename) as f:
             for buf in f.read_data(128 * 1024):
                 a = self._decode(f, buf)

@@ -1,15 +1,20 @@
 """Parses the cc65 .dbg output to extract symbol addresses."""
 
-from typing import Dict
+from typing import Dict, TextIO
 
 
 class SymbolTable:
     """Parse cc65 debug file to extract symbol table."""
 
     def __init__(self, debugfile: str = None):
-        self.debugfile = debugfile
+        self.debugfile = debugfile  # type: str
 
-    def parse(self, iostream=None) -> Dict:
+    def parse(self, iostream: TextIO = None) -> Dict:
+        """
+
+        :param iostream:
+        :return:
+        """
         syms = {}
 
         if not iostream:
