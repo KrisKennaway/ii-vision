@@ -136,7 +136,7 @@ def _parse_symbol_table():
                 continue
             opcode_addrs.append((op, addrs["start"]))
 
-    return sorted(opcode_addrs, key=lambda x: (x[1], x[2]))
+    return sorted(opcode_addrs, key=lambda x: x[1])
 
 
 def _fill_opcode_addresses():
