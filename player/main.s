@@ -11,16 +11,16 @@
 ;  - 5 bit DAC audio at ~14KHz
 ;  - 56 KB/sec video update bandwidth
 ;
-; This is sufficient for ~7.5 full page redraws of the hires screen per second, although the
-; effective frame rate is typically higher, when there are only partial changes between
-; frames.
+;  This is sufficient for ~7.5 full page redraws of the hires screen per second, although the
+;  effective frame rate is typically higher, when there are only partial changes between
+;  frames.
 ;
-; Fitting this in 64K together with ProDOS is pretty tight.  We make use of 3 memory
-; segments:
+;  Fitting this in 64K together with ProDOS is pretty tight.  We make use of 3 memory
+;  segments:
 ;
-; LOWCODE (0x800 - 0x1fff)
-; HGR (0x2000 - 0x3fff): code needed only at startup, which will be erased as soon as we start playing a video
-; CODE (0x4000 - 0xbaff): rest of main memory unused by ProDOS
+;  LOWCODE (0x800 - 0x1fff)
+;  HGR (0x2000 - 0x3fff): code needed only at startup, which will be erased as soon as we start playing a video
+;  CODE (0x4000 - 0xbaff): rest of main memory unused by ProDOS
 
 .include "apple2.inc"
 
@@ -35,7 +35,7 @@
 ; TODO: make these configurable
 SRCADDR:  .byte   $C0,$A8,$01,147            ; 192.168.1.147  W5100 IP
 FADDR:    .byte   $C0,$A8,$01,15             ; 192.168.1.15   FOREIGN IP
-FPORT:    .byte   $b9,$07                    ; 1977           FOREIGN PORT
+FPORT:    .byte   $07,$b9                    ; 1977           FOREIGN PORT
 MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
 
 ; SLOT 1 I/O ADDRESSES FOR THE W5100
