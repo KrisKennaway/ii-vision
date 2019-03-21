@@ -56,7 +56,7 @@ class Video:
             yield Image.fromarray(frame_array)
 
     @staticmethod
-    def _rgb(r,g,b):
+    def _rgb(r, g, b):
         return (r << 16) + (g << 8) + b
 
     # def dither_framesframes(self) -> Iterator[screen.MemoryMap]:

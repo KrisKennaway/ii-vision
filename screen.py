@@ -121,7 +121,7 @@ class Bitmap:
     def to_bytemap(self) -> Bytemap:
         return self._to_bytemap(self.bitmap)
 
-    def to_memory_map(self, screen_page:int) -> "MemoryMap":
+    def to_memory_map(self, screen_page: int) -> "MemoryMap":
         return self.to_bytemap().to_memory_map(screen_page)
 
     @staticmethod
@@ -176,7 +176,7 @@ class DHGRBitmap(Bitmap):
 class FlatMemoryMap:
     """Linear 8K representation of HGR screen memory."""
 
-    def __init__(self, screen_page: int, data: np.array=None):
+    def __init__(self, screen_page: int, data: np.array = None):
         if screen_page not in [1, 2]:
             raise ValueError("Screen page out of bounds: %d" % screen_page)
         self.screen_page = screen_page  # type: int
@@ -205,7 +205,7 @@ class FlatMemoryMap:
 class MemoryMap:
     """Page/offset-structured representation of HGR screen memory."""
 
-    def __init__(self, screen_page: int, page_offset: np.array=None):
+    def __init__(self, screen_page: int, page_offset: np.array = None):
         if screen_page not in [1, 2]:
             raise ValueError("Screen page out of bounds: %d" % screen_page)
         self.screen_page = screen_page  # type: int

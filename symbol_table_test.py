@@ -23,8 +23,8 @@ class TestSymbolTable(unittest.TestCase):
     def test_parse(self):
         dbg = io.StringIO(DEBUG_FILE)
         s = symbol_table.SymbolTable()
-        self.assertEqual({"\"op_ack\"", "\"op_tick\"", "\"rle1\""},
-                            s.parse(dbg).keys())
+        self.assertEqual(
+            {"\"op_ack\"", "\"op_tick\"", "\"rle1\""}, s.parse(dbg).keys())
 
 
 if __name__ == '__main__':

@@ -39,7 +39,6 @@ class TestByteToColourString(unittest.TestCase):
             "1OOO", video.byte_to_colour_string(0xd5, is_odd_offset=True))
 
 
-
 class TestEditWeight(unittest.TestCase):
     def testTransposition(self):
         self.assertEqual("WKK0", video.byte_to_colour_string(
