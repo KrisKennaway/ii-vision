@@ -20,7 +20,6 @@ OpcodeCommand = enum.Enum("OpcodeCommand", _op_cmds)
 
 class Opcode:
     COMMAND = None  # type: OpcodeCommand
-    _CYCLES = None  # type: int
 
     # Offset of start byte in decoder opcode
     _START = None  # type: int
@@ -37,10 +36,6 @@ class Opcode:
     def __data_eq__(self, other):
         raise NotImplementedError
 
-    @property
-    def cycles(self) -> int:
-        return self._CYCLES
-
     @staticmethod
     def emit_command(opcode: "Opcode") -> Iterator[int]:
         # Emit address of next opcode
@@ -56,7 +51,6 @@ class Opcode:
 
 class Nop(Opcode):
     COMMAND = OpcodeCommand.NOP
-    _CYCLES = 11  # TODO: count
 
     def __data_eq__(self, other):
         return True
@@ -64,7 +58,6 @@ class Nop(Opcode):
 
 class Terminate(Opcode):
     COMMAND = OpcodeCommand.TERMINATE
-    _CYCLES = 6  # TODO: count
 
     def __data_eq__(self, other):
         return True
@@ -72,7 +65,6 @@ class Terminate(Opcode):
 
 class Ack(Opcode):
     COMMAND = OpcodeCommand.ACK
-    _CYCLES = 100  # TODO: count
 
     def emit_data(self) -> Iterator[int]:
         # Dummy bytes to pad out TCP frame
@@ -84,8 +76,6 @@ class Ack(Opcode):
 
 
 class BaseTick(Opcode):
-    _CYCLES = 73
-
     def __init__(self, content: int, offsets: Tuple):
         self.content = content
         if len(offsets) != 4:
