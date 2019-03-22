@@ -116,7 +116,7 @@ class Video:
                 try:
                     os.stat(outfile)
                 except FileNotFoundError:
-                    _frame = _frame.resize((280, 192))
+                    _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
                     _frame.save(bmpfile)
 
                     subprocess.call(
