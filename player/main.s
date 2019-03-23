@@ -51,13 +51,16 @@ WDATA = $C097
 
 ;;;
 
+; some dummy addresses in order to pad cycle counts
+zpdummy = $00
+dummy = $ffff
+
 hgr = $f3e2
 fullscr = $c052
 tick = $c030 ; where the magic happens
 
-; some dummy addresses in order to pad cycle counts
-zpdummy = $00
-dummy = $ffff
+prodos = $BF00 ; ProDOS MLI entry point
+reset_vector = $3F2 ; Reset vector
 
 ; W5100 LOCATIONS
 MACADDR  =   $0009    ; MAC ADDRESS
@@ -133,10 +136,18 @@ GETSTARTADR = $0C ; 2 BYTES FOR PHYSICAL ADDR
 
 ; RESET AND CONFIGURE W5100
 bootstrap:
+    ; install reset handler
+    LDA #<exit
+    STA reset_vector
+    LDA #>exit
+    STA reset_vector+1
+    EOR #$A5
+    STA reset_vector+2 ; checksum to ensure warm-start reset
+
     LDA   #6    ; 5 RETRIES TO GET CONNECTION
     STA   PTR   ; NUMBER OF RETRIES
 
-RESET:
+RESET_W5100:
     LDA #$80    ; reset
     STA WMODE
     LDA #3  ; CONFIGURE WITH AUTO-INCREMENT
@@ -256,7 +267,7 @@ FAILED:
     BEQ ERRDONE ; TOO MANY FAILURES
     LDA #$AE    ; "."
     JSR COUT
-    JMP RESET ; TRY AGAIN
+    JMP RESET_W5100 ; TRY AGAIN
 
 ERRDONE:
     LDY #0
@@ -276,6 +287,21 @@ SETUP:
     JMP init_mainloop
 
 .segment "CODE"
+
+; Quit to ProDOS
+exit:
+    INC  reset_vector+2  ; Invalidate power-up byte
+    JSR  prodos          ; Call the MLI ($BF00)
+    .BYTE $65            ; CALL TYPE = QUIT
+    .ADDR exit_parmtable ; Pointer to parameter table
+
+exit_parmtable:
+    .BYTE 4             ; Number of parameters is 4
+    .BYTE 0             ; 0 is the only quit type
+    .WORD 0000          ; Pointer reserved for future use
+    .BYTE 0             ; Byte reserved for future use
+    .WORD 0000          ; Pointer reserved for future use
+
 init_mainloop:
     JSR hgr ; nukes the startup code we placed in HGR segment
     STA fullscr
@@ -1228,6 +1254,14 @@ op_tick_60 63
 op_tick_62 63
 op_tick_64 63
 op_tick_66 63
+
+op_terminate:
+    ; Wait for keypress
+    LDA KBD
+    BMI @1 ; key pressed
+    BPL op_terminate
+@1: LDA KBDSTRB ; clear strobe
+    JMP exit
 
 ; Manage W5100 socket buffer and ACK TCP stream.
 ;
