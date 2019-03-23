@@ -6,22 +6,29 @@ from typing import Iterator, Tuple
 import symbol_table
 from machine import Machine
 
-_op_cmds = [
-    "TERMINATE",
-    "NOP",
-    "ACK",
-]
-for tick in range(4, 68, 2):
-    for page in range(32, 64):
-        _op_cmds.append("TICK_%d_PAGE_%d" % (tick, page))
 
-OpcodeCommand = enum.Enum("OpcodeCommand", _op_cmds)
+def _op_cmds():
+    """Construct names of player opcodes."""
+
+    op_cmds = [
+        "TERMINATE",
+        "NOP",
+        "ACK",
+    ]
+    for tick in range(4, 68, 2):
+        for page in range(32, 64):
+            op_cmds.append("TICK_%d_PAGE_%d" % (tick, page))
+    return op_cmds
+
+
+OpcodeCommand = enum.Enum("OpcodeCommand", _op_cmds())
 
 
 class Opcode:
+    """Base class for opcodes."""
     COMMAND = None  # type: OpcodeCommand
 
-    # Offset of start byte in decoder opcode
+    # Offset of start byte of player opcode implementation
     _START = None  # type: int
 
     def __repr__(self):
@@ -50,6 +57,7 @@ class Opcode:
 
 
 class Nop(Opcode):
+    """NOP pad opcode that does nothing except vector to the next one."""
     COMMAND = OpcodeCommand.NOP
 
     def __data_eq__(self, other):
@@ -57,6 +65,7 @@ class Nop(Opcode):
 
 
 class Terminate(Opcode):
+    """Terminates video playback."""
     COMMAND = OpcodeCommand.TERMINATE
 
     def __data_eq__(self, other):
@@ -64,6 +73,7 @@ class Terminate(Opcode):
 
 
 class Ack(Opcode):
+    """Instructs player to perform TCP stream + buffer management."""
     COMMAND = OpcodeCommand.ACK
 
     def emit_data(self) -> Iterator[int]:
@@ -76,6 +86,13 @@ class Ack(Opcode):
 
 
 class BaseTick(Opcode):
+    """Base class for "fat" audio + video opcode.
+
+    Each such opcode is specialized for a particular HiRes graphics page,
+    and speaker duty cycle count.  The opcode also stores the provided
+    content byte at 4 offsets on this graphics page.
+    """
+
     def __init__(self, content: int, offsets: Tuple):
         self.content = content
         if len(offsets) != 4:
@@ -90,18 +107,23 @@ class BaseTick(Opcode):
         yield from self.offsets
 
 
-TICK_OPCODES = {}
+def _make_tick_opcodes():
+    # Dynamically construct classes for each of the tick opcodes.
+    tick_opcodes = {}
 
-for _tick in range(4, 68, 2):
-    for _page in range(32, 64):
-        _cls = type(
-            "Tick%dPage%d" % (_tick, _page),
-            (BaseTick,),
-            {
-                "COMMAND": OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
-            }
-        )
-        TICK_OPCODES[(_tick, _page)] = _cls
+    for _tick in range(4, 68, 2):
+        for _page in range(32, 64):
+            tick_opcodes[(_tick, _page)] = type(
+                "Tick%dPage%d" % (_tick, _page),
+                (BaseTick,),
+                {
+                    "COMMAND": OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
+                }
+            )
+    return tick_opcodes
+
+
+TICK_OPCODES = _make_tick_opcodes()
 
 
 def _parse_symbol_table():
@@ -128,20 +150,28 @@ def _parse_symbol_table():
 
 def _fill_opcode_addresses():
     """Populate _START on opcodes from symbol table."""
+
+    _OPCODE_ADDRS = _parse_symbol_table()
+    _OPCODE_CLASSES = {
+        OpcodeCommand.TERMINATE: Terminate,
+        OpcodeCommand.NOP: Nop,
+        OpcodeCommand.ACK: Ack,
+    }
+
+    for _tick in range(4, 68, 2):
+        for _page in range(32, 64):
+            _tickop = OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
+            _OPCODE_CLASSES[_tickop] = TICK_OPCODES[(_tick, _page)]
     for op, start in _OPCODE_ADDRS:
         cls = _OPCODE_CLASSES[op]
         cls._START = start
 
+    for op, cls in _OPCODE_CLASSES.items():
+        if not cls._START:
+            raise ValueError(
+                "Unable to find opcode address for %s in player debug symbols"
+                % op
+            )
 
-_OPCODE_ADDRS = _parse_symbol_table()
-_OPCODE_CLASSES = {
-    OpcodeCommand.TERMINATE: Terminate,
-    OpcodeCommand.NOP: Nop,
-    OpcodeCommand.ACK: Ack,
-}
 
-for _tick in range(4, 68, 2):
-    for _page in range(32, 64):
-        _tickop = OpcodeCommand["TICK_%d_PAGE_%d" % (_tick, _page)]
-        _OPCODE_CLASSES[_tickop] = TICK_OPCODES[(_tick, _page)]
 _fill_opcode_addresses()
