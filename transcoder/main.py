@@ -29,11 +29,11 @@ def main(args):
     m = movie.Movie(
         filename,
         every_n_video_frames=args.every_n_video_frames,
-        audio_normalization=args.audio_normalization)
+        audio_normalization=args.audio_normalization,
+        max_bytes_out = 1024. * 1024 * args.max_output_mb
+    )
 
     print("Input frame rate = %f" % m.video.input_frame_rate)
-
-    max_bytes_out = 1024. * 1024 * args.max_output_mb
 
     if args.output:
         out_filename = args.output
@@ -44,11 +44,6 @@ def main(args):
     with open(out_filename, "wb") as out:
         for bytes_out, b in enumerate(m.emit_stream(m.encode())):
             out.write(bytearray([b]))
-
-            if max_bytes_out and bytes_out >= max_bytes_out:
-                break
-
-        out.write(bytes(m.done()))
 
 
 if __name__ == "__main__":

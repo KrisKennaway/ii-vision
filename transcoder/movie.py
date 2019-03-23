@@ -12,9 +12,13 @@ class Movie:
     def __init__(
             self, filename: str,
             every_n_video_frames: int = 1,
-            audio_normalization: float = None):
+            audio_normalization: float = None,
+            max_bytes_out: int = None
+    ):
         self.filename = filename  # type: str
         self.every_n_video_frames = every_n_video_frames  # type: int
+        self.max_bytes_out = max_bytes_out  # type: int
+
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
         self.video = video.Video(filename)  # type: video.Video
@@ -75,6 +79,9 @@ class Movie:
         :return:
         """
         for op in ops:
+            if self.stream_pos >= self.max_bytes_out:
+                yield from self.done()
+                return
             # Keep track of where we are in TCP client socket buffer
             socket_pos = self.stream_pos % 2048
             if socket_pos >= 2044:
@@ -88,3 +95,7 @@ class Movie:
         :return:
         """
         yield from self._emit_bytes(opcodes.Terminate())
+
+        # Player expects to fill 2K TCP buffer so pad it out
+        for _ in range(2048 - (self.stream_pos % 2048)):
+            yield 0x00
