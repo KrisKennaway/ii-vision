@@ -79,7 +79,7 @@ class Movie:
         :return:
         """
         for op in ops:
-            if self.stream_pos >= self.max_bytes_out:
+            if self.max_bytes_out and self.stream_pos >= self.max_bytes_out:
                 yield from self.done()
                 return
             # Keep track of where we are in TCP client socket buffer
@@ -88,6 +88,8 @@ class Movie:
                 # 2 dummy bytes + 2 address bytes for next opcode
                 yield from self._emit_bytes(opcodes.Ack())
             yield from self._emit_bytes(op)
+
+        yield from self.done()
 
     def done(self) -> Iterator[int]:
         """Terminate opcode stream.
