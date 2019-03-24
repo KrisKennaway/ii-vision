@@ -1,8 +1,8 @@
-# ][-Vision v0.1
+# ]\[-Vision v0.1
 
 Streaming video and audio for the Apple II.
 
-][-Vision transcodes video files in standard formats (.mp4 etc) into a custom format optimized for streaming playback on
+]\[-Vision transcodes video files in standard formats (.mp4 etc) into a custom format optimized for streaming playback on
 Apple II hardware.
 
 Requires:
@@ -57,21 +57,29 @@ Actually this is the fastest possible way for the 6502 to read data (without DMA
 
 In implementing video+audio playback I arrived at a couple of key principles:
 
-1. audio requires cycle-exact timing control of when to tick the speaker, which pretty much means that all possible operations of the decoder must have constant time (or at least multiples thereof) 
+1. audio requires cycle-exact timing control of when to tick the speaker, which pretty much means that all possible operations of the player must have constant time (or at least multiples thereof) 
 
-1. you can’t afford to waste cycles on conditional operations, e.g. the decoder figuring out what a byte means or what to do next.  Conditional operations mess with the audio timings, and more importantly at 1MHz we don’t have cycles to waste on such luxuries. 
+1. you can’t afford to waste cycles on conditional operations, e.g. the player figuring out what a byte means or what to do next.  Conditional operations mess with the audio timings, and more importantly at 1MHz we don’t have cycles to waste on such luxuries. 
 
 In fact in the inner playback loop there are no conditional 6502 opcodes at all, except for the slow-path where I have to manage the TCP stream, which is non-deterministic in one aspect (new data may not have arrived yet).  Otherwise the 6502 is fully steered by the byte stream - not just video data but also decoder addresses to JMP to next, and when the socket buffer needs to be managed.  This is how I select which speaker duty cycle to select next, as well as which hires screen page to store data on during that audio frame.  It turns out to (barely) fit together with ProDOS in 64k. 
 
-The player is structured in terms of discrete opcodes, which each read 0 or more bytes from the TCP buffer as arguments,
-and then read a 2-byte address from the TCP buffer that is used to vector to the next opcode.
+The player is structured in terms of discrete opcodes, which each read 0 or more bytes from the TCP buffer as arguments, and then read a 2-byte address from the TCP buffer that is used to vector to the next opcode.
 
 We use a 73-cycle fundamental period, i.e. all video/audio decoding opcodes take 73 cycles, and the "slow path" TCP buffer management takes 3x73 cycles (so as to minimize disruption to audio).  This gives 14364 Hz as the "carrier" frequency of the audio modulation, which is high enough to not be too audible (at least to my ageing ears!) 
 
-Playback is driven by "fat" opcodes that combine a single 14364Hz audio cycle with 4 stores to display memory.
+Playback is driven by "fat" opcodes that combine a single 14364Hz audio cycle with 4 stores to display memory.  These opcodes are parametrized by:
+- the memory page on which to write (page 0x20 .. 0x3f, i.e. hires screen page 1)
+- the number of clock cycles for which the speaker should be driven (4 .. 66 cycles in steps of 2, i.e. 32 gradations)
+  - 2 of these 32 duty cycles are off by one clock cycle because I couldn't find a way to exactly reproduce the target cycle count
 
-Management of the socket buffer + TCP stream is also scheduled by an "ACK" opcode placed at 2k boundaries in the stream.  This
-avoids the need for the player to explicitly manage the buffering (e.g. when to ACK) as well as simplifying the buffer management logic.
+i.e. there are 32 * 32 = 1024 variants of these opcodes, which end up taking up the majority of free memory.
+
+Each of these opcodes does the following:
+- actuates the speaker for the desired number of clock cycles
+- reads a content byte from the TCP stream
+- reads 4 offset bytes from the TCP stream and stores the content byte at these offsets for the opcode's memory page.
+
+Management of the socket buffer + TCP stream is also scheduled by an "ACK" opcode placed at 2KB boundaries in the stream.  This avoids the need for the player to explicitly manage the buffering (e.g. when to ACK) as well as simplifying the buffer management logic.
 
 ### Transcoder
 
@@ -87,6 +95,8 @@ Video processing requires more work, because it is constrained:
 
 i.e. it is necessary to prioritize which screen bytes to send to maximize the perceived image quality, and also to introduce controlled errors (e.g. deciding when it is worthwhile to store a content byte at some offset, that is not the exact content byte that we want but which does not introduce too much visual error)
 
+TODO: describe this algorithm in more detail
+
 ## Known issues
 
 ### Configuration
@@ -96,19 +106,15 @@ The video player currently has hard-coded configuration (i.e. not configurable a
 - source and destination IP addresses are fixed
 - assumes the Uthernet II is in slot 1.
 
-Supporting configurable IP addresses should be relatively straightforward to implement, but configuring the
-slot requires patching many addresses in the player binary and would take additional effort.
+Supporting configurable IP addresses should be relatively straightforward to implement, but configuring the slot requires patching many addresses in the player binary and would take additional effort.
 
-For now you'll need to build this yourself.  The makefile in the player/ directory uses the excellent
-[Apple2BuildPipeline](https://github.com/jeremysrand/Apple2BuildPipeline) from Jeremy S. Rand, which requires Mac OS X.
+For now you'll need to build this yourself.  The makefile in the player/ directory uses the excellent [Apple2BuildPipeline](https://github.com/jeremysrand/Apple2BuildPipeline) from Jeremy S. Rand, which requires Mac OS X.
 
 ### Tight coupling of player and video format
 
-Because the transcoder effectively compiles the video for a particular version of the player (by reading the symbol table and
-emitting player opcode offsets into the byte stream), this means that any changes to these symbol offsets will mean the player is unable to play back existing videos (and will likely crash, hang etc when JMPing to a random offset)
+Because the transcoder effectively compiles the video for a particular version of the player (by reading the symbol table and emitting player opcode offsets into the byte stream), this means that any changes to these symbol offsets will mean the player is unable to play back existing videos (and will likely crash, hang etc when JMPing to a random offset)
 
-It should be possible to at least detect this situation by maintaining a player version number and including this in a video
-header.
+It should be possible to at least detect this situation by maintaining a player version number and including this in a video header.
 
 The video transcoder should be able to detect when the symbol addresses have changed (e.g. by maintaining a cache of versions and symbol addresses) and require the version to be incremented.
 
@@ -118,8 +124,7 @@ With a version cache the video server could also translate on the fly by interpr
 
 ### Double hi-res support
 
-In principle it should be straightforward for the player to support double hi-res graphics, since this just requires toggling
-the appropriate soft switches to enable writes to be steered onto MAIN or AUX screen memory.  This could be toggled in the ACK codepath.
+In principle it should be straightforward for the player to support double hi-res graphics, since this just requires toggling the appropriate soft switches to enable writes to be steered onto MAIN or AUX screen memory.  This could be toggled in the ACK codepath.
 
 The image encoder (BMP2DHGR) already supports this, so the only hard part is teaching the transcoder how to encode and sequence the video stream.
 
