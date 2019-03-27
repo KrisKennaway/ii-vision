@@ -76,13 +76,18 @@ class Ack(Opcode):
     """Instructs player to perform TCP stream + buffer management."""
     COMMAND = OpcodeCommand.ACK
 
+    def __init__(self, aux_active: bool):
+        self.aux_active = aux_active
+
     def emit_data(self) -> Iterator[int]:
-        # Dummy bytes to pad out TCP frame
-        yield 0xff
+        # Flip $C054 or $C055 soft-switches to steer subsequent writes to
+        # MAIN/AUX screen memory
+        yield 0x54 if self.aux_active else 0x55
+        # Dummy byte to pad out TCP frame
         yield 0xff
 
     def __data_eq__(self, other):
-        return True
+        return self.aux_active == other.aux_active
 
 
 class BaseTick(Opcode):

@@ -36,6 +36,8 @@ class Movie:
             self.video.update_priority
         )
 
+        self.aux_memory_bank = False
+
     def encode(self) -> Iterator[opcodes.Opcode]:
         """
 
@@ -47,18 +49,23 @@ class Movie:
         for au in self.audio.audio_stream():
             self.cycles += self.audio.cycles_per_tick
             if self.video.tick(self.cycles):
-                video_frame = next(video_frames)
+                main, aux = next(video_frames)
                 if ((self.video.frame_number - 1) % self.every_n_video_frames
                         == 0):
                     print("Starting frame %d" % self.video.frame_number)
-                    video_seq = self.video.encode_frame(video_frame)
+                    main_seq = self.video.encode_frame(
+                        main, self.video.memory_map, self.video.update_priority)
+                    aux_seq = self.video.encode_frame(
+                        aux, self.video.aux_memory_map,
+                        self.video.aux_update_priority)
 
             # au has range -15 .. 16 (step=1)
             # Tick cycles are units of 2
             tick = au * 2  # -30 .. 32 (step=2)
             tick += 34  # 4 .. 66 (step=2)
 
-            (page, content, offsets) = next(video_seq)
+            (page, content, offsets) = next(
+                        aux_seq if self.aux_memory_bank else main_seq)
 
             yield opcodes.TICK_OPCODES[(tick, page)](content, offsets)
 
@@ -86,7 +93,9 @@ class Movie:
             socket_pos = self.stream_pos % 2048
             if socket_pos >= 2044:
                 # 2 dummy bytes + 2 address bytes for next opcode
-                yield from self._emit_bytes(opcodes.Ack())
+                yield from self._emit_bytes(opcodes.Ack(self.aux_memory_bank))
+                # Flip-flop between MAIN and AUX banks
+                self.aux_memory_bank = not self.aux_memory_bank
             yield from self._emit_bytes(op)
 
         yield from self.done()

@@ -45,9 +45,13 @@ class Video:
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
             screen_page=1)  # type: screen.MemoryMap
+        self.aux_memory_map = screen.MemoryMap(
+            screen_page=1)  # type: screen.MemoryMap
 
         # Accumulates pending edit weights across frames
         self.update_priority = np.zeros((32, 256), dtype=np.int64)
+
+        self.aux_update_priority = np.zeros((32, 256), dtype=np.int64)
 
     def tick(self, cycles: int) -> bool:
         if cycles > (self.cycles_per_frame * self.frame_number):
@@ -110,51 +114,61 @@ class Video:
         def worker():
             """Invoke bmp2dhr to encode input image frames and push to queue."""
             for _idx, _frame in enumerate(self._frame_grabber()):
-                outfile = "%s/%08dC.BIN" % (frame_dir, _idx)
+                mainfile = "%s/%08d.BIN" % (frame_dir, _idx)
+                auxfile = "%s/%08d.AUX" % (frame_dir, _idx)
+
                 bmpfile = "%s/%08d.bmp" % (frame_dir, _idx)
 
                 try:
-                    os.stat(outfile)
+                    os.stat(mainfile)
+                    os.stat(auxfile)
                 except FileNotFoundError:
                     _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
                     _frame.save(bmpfile)
 
                     subprocess.call(
-                        ["/usr/local/bin/bmp2dhr", bmpfile, "hgr", "D9"])
+                        ["/usr/local/bin/bmp2dhr", bmpfile, "dhgr", "P0", "A",
+                         "D9"])
 
                     os.remove(bmpfile)
 
-                _frame = np.fromfile(outfile, dtype=np.uint8)
-                q.put(_frame)
+                main = np.fromfile(mainfile, dtype=np.uint8)
+                aux = np.fromfile(auxfile, dtype=np.uint8)
+                q.put((main, aux))
 
-            q.put(None)
+            q.put((None, None))
 
         t = threading.Thread(target=worker, daemon=True)
         t.start()
 
         while True:
-            frame = q.get()
-            if frame is None:
+            main, aux = q.get()
+            if main is None:
                 break
 
-            yield screen.FlatMemoryMap(
-                screen_page=1, data=frame).to_memory_map()
+            yield (
+                screen.FlatMemoryMap(screen_page=1, data=main).to_memory_map(),
+                screen.FlatMemoryMap(screen_page=1, data=aux).to_memory_map()
+            )
             q.task_done()
 
         t.join()
 
     def encode_frame(
-            self, target: screen.MemoryMap
+            self, target: screen.MemoryMap,
+            memory_map: screen.MemoryMap,
+            update_priority: np.array,
     ) -> Iterator[opcodes.Opcode]:
         """Update to match content of frame within provided budget."""
 
-        print("Similarity %f" % (self.update_priority.mean()))
-        yield from self._index_changes(self.memory_map, target)
+        print("Similarity %f" % (update_priority.mean()))
+        yield from self._index_changes(memory_map, target, update_priority)
 
     def _index_changes(
             self,
             source: screen.MemoryMap,
-            target: screen.MemoryMap
+            target: screen.MemoryMap,
+            update_priority: np.array
     ) -> Iterator[Tuple[int, int, List[int]]]:
         """Transform encoded screen to sequence of change tuples."""
 
@@ -162,16 +176,16 @@ class Video:
 
         # Clear any update priority entries that have resolved themselves
         # with new frame
-        self.update_priority[diff_weights == 0] = 0
+        update_priority[diff_weights == 0] = 0
 
         # Halve existing weights to increase bias to new diffs.
         # In particular this means that existing updates with diff 1 will
         # become diff 0, i.e. will only be prioritized if they are still
         # diffs in the new frame.
         # self.update_priority >>= 1
-        self.update_priority += diff_weights
+        update_priority += diff_weights
 
-        priorities = self._heapify_priorities()
+        priorities = self._heapify_priorities(update_priority)
 
         content_deltas = {}
 
@@ -179,15 +193,15 @@ class Video:
             _, _, page, offset = heapq.heappop(priorities)
             # Check whether we've already cleared this diff while processing
             # an earlier opcode
-            if self.update_priority[page, offset] == 0:
+            if update_priority[page, offset] == 0:
                 continue
 
             offsets = [offset]
             content = target.page_offset[page, offset]
 
             # Clear priority for the offset we're emitting
-            self.update_priority[page, offset] = 0
-            self.memory_map.page_offset[page, offset] = content
+            update_priority[page, offset] = 0
+            source.page_offset[page, offset] = content
             diff_weights[page, offset] = 0
 
             # Make sure we don't emit this offset as a side-effect of some
@@ -212,9 +226,9 @@ class Video:
                     error=False)
 
                 # Update priority for the offset we're emitting
-                self.update_priority[page, o] = p  # 0
+                update_priority[page, o] = p  # 0
 
-                self.memory_map.page_offset[page, o] = content
+                source.page_offset[page, o] = content
 
                 if p:
                     # This content byte introduced an error, so put back on the
@@ -242,9 +256,9 @@ class Video:
         return edit_distance.screen_edit_distance(
             source.page_offset, target.page_offset)
 
-    def _heapify_priorities(self) -> List:
+    def _heapify_priorities(self, update_priority: np.array) -> List:
         priorities = []
-        it = np.nditer(self.update_priority, flags=['multi_index'])
+        it = np.nditer(update_priority, flags=['multi_index'])
         while not it.finished:
             priority = it[0]
             if not priority:

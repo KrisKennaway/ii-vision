@@ -304,7 +304,22 @@ exit_parmtable:
 
 init_mainloop:
     JSR hgr ; nukes the startup code we placed in HGR segment
+
+    STA $C050 ; GRAPHICS
+    STA $C057 ; HIRES
+    STA $C05E ; DHR
+    STA $C00D ; 80 COLUMN MODE
+
+    STA $C001 ; 80STOREON
+
+    ; Clear aux screen
+    STA $C055 ;
+    LDA #$20
+    JSR $F3EA
+
     STA fullscr
+
+    STA $C054 ; MAIN memory active
 
     ; establish invariant expected by decode loop
     LDX #$00
@@ -1256,11 +1271,11 @@ op_tick_64 63
 op_tick_66 63
 
 op_terminate:
-    ; Wait for keypress
+    LDA KBDSTRB ; clear strobe
+@0: ; Wait for keypress
     LDA KBD
-    BMI @1 ; key pressed
-    BPL op_terminate
-@1: LDA KBDSTRB ; clear strobe
+    BPL @0
+@1: ; key pressed
     JMP exit
 
 ; Manage W5100 socket buffer and ACK TCP stream.
@@ -1268,30 +1283,35 @@ op_terminate:
 ; In order to simplify the buffer management we expect this ACK opcode to consume
 ; the last 4 bytes in a 2K "TCP frame".  i.e. we can assume that we need to consume
 ; exactly 2K from the W5100 socket buffer.
+;
+; TODO: actually we are underrunning by 2 bytes currently, we've only consumed 2
+; bytes of 4 by this point.
 op_ack:
     BIT tick ; 4
 
-    LDA WDATA ; 4 dummy read of second-last byte in TCP frame
+    ; allow flip-flopping the PAGE1/PAGE2 soft switches to steer writes to MAIN/AUX screens
+    ; actually this allows touching any $C0XX soft-switch, in case that is useful somehow
+    LDA WDATA ; 4
+    STA @D+1 ; 4
+@D:
+    STA $C054 ; 4 low-byte is modified
     LDA WDATA ; 4 dummy read of last byte in TCP frame
 
     CLC ; 2
     LDA #>S0RXRD ; 2 NEED HIGH BYTE HERE
     STA WADRH ; 4
-    LDA #<S0RXRD ; 2
+    LDX #<S0RXRD ; 2
+    STX WADRL ; 4
 
-    STA WADRL ; 4
+    NOP ; 2
+    BIT tick ; 4 (36) ; does not affect Carry bit
+
+    ; No need to read/modify low byte since it is always guaranteed to be 0 (since we are at the end of a 2K frame)
     LDA WDATA ; 4 HIGH BYTE
-    LDX WDATA ; 4 LOW BYTE ; not sure if needed -- but we have cycles to spare so who cares!
 
-    ADC #$08 ; 2 ADD HIGH BYTE OF RECEIVED SIZE
-    BIT tick ; 4 (36)
-    TAY ; 2 SAVE
-
-    LDA #<S0RXRD ; 2
-    STA WADRL ; 4 Might not be needed, but have cycles to spare
-
-    STY WDATA ; 4 SEND HIGH BYTE
-    STX WDATA ; 4 SEND LOW BYTE
+    ADC #$08 ; 2 Add high byte of received size (always constant
+    STX WADRL ; 4 Reset address pointer, still have it in X
+    STA WDATA ; 4 Store high byte (no need to store low byte since it's 0)
 
 ; SEND THE RECV COMMAND
     LDA #<S0CR ; 2
@@ -1300,6 +1320,7 @@ op_ack:
     STA WDATA ; 4
 
     NOP ; 2 ; see, we even have cycles left over!
+    NOP ; 2
 
     JMP CHECKRECV ; 3 (37 with following BIT tick)
 
@@ -1312,22 +1333,5 @@ CLOSECONN:
     STA WADRL
     LDA #SCDISCON ; DISCONNECT
     STA WDATA ; SEND COMMAND
-
-; CHECK FOR CLOSED STATUS
-
-;CHECKCLOSED:
-;    LDX #0
-;@L:
-;    LDA #<S0SR
-;    STA WADRL
-;    LDA WDATA
-;    BEQ ISCLOSED
-;    NOP
-;    NOP
-;    NOP
-;    INX
-;    BNE @L  ; DON'T WAIT FOREVER
-;ISCLOSED:
-;    RTS ; SOCKET IS CLOSED
 
 .endproc
