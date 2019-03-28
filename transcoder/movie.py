@@ -92,7 +92,8 @@ class Movie:
             # Keep track of where we are in TCP client socket buffer
             socket_pos = self.stream_pos % 2048
             if socket_pos >= 2044:
-                # 2 dummy bytes + 2 address bytes for next opcode
+                # 2 op_ack address bytes + 2 payload bytes from ACK must
+                # terminate 2K stream frame
                 yield from self._emit_bytes(opcodes.Ack(self.aux_memory_bank))
                 # Flip-flop between MAIN and AUX banks
                 self.aux_memory_bank = not self.aux_memory_bank
