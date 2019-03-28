@@ -33,8 +33,8 @@
 .segment "HGR"
 
 ; TODO: make these configurable
-SRCADDR:  .byte   $C0,$A8,$01,147            ; 192.168.1.147  W5100 IP
-FADDR:    .byte   $C0,$A8,$01,15             ; 192.168.1.15   FOREIGN IP
+SRCADDR:  .byte   192,168,1,147              ; 192.168.1.147  W5100 IP
+FADDR:    .byte   192,168,1,15               ; 192.168.1.15   FOREIGN IP
 FPORT:    .byte   $07,$b9                    ; 1977           FOREIGN PORT
 MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
 
@@ -52,7 +52,7 @@ WDATA = $C097
 ;;;
 
 ; some dummy addresses in order to pad cycle counts
-zpdummy = $00
+zpdummy = $08
 dummy = $ffff
 
 hgr = $f3e2
@@ -70,16 +70,10 @@ RMSR     =   $001A    ; RECEIVE BUFFER SIZE
 ; SOCKET 0 LOCATIONS
 S0MR = $0400  ; SOCKET 0 MODE REGISTER
 S0CR = $0401  ; COMMAND REGISTER
-S0IR = $0402  ; INTERRUPT REGISTER
 S0SR = $0403  ; STATUS REGISTER
 S0LOCALPORT = $0404   ; LOCAL PORT
 S0FORADDR =  $040C    ; FOREIGN ADDRESS
 S0FORPORT =  $0410    ; FOREIGN PORT
-S0MSS    =   $0412    ; MAX SEGMENT SIZE
-S0PROTO  =   $0414    ; IP PROTOCOL
-S0TOS    =   $0415    ; DS/ECN (FORMER TOS)
-S0TTL    =   $0416    ; IP TIME TO LIVE
-S0TXFSR  =   $0420    ; TX FREE SIZE REGISTER
 S0TXRR   =   $0422    ; TX READ POINTER REGISTER
 S0TXWR   =   $0424    ; TX WRITE POINTER REGISTER
 S0RXRSR  =   $0426    ; RX RECEIVED SIZE REGISTER
@@ -93,25 +87,14 @@ TXMASK  =   RXMASK    ; SOCKET 0 TX MASK
 
 ; SOCKET COMMANDS
 SCOPEN   =   $01  ; OPEN
-SCLISTEN =   $02  ; LISTEN
 SCCONNECT =  $04  ; CONNECT
 SCDISCON =   $08  ; DISCONNECT
-SCCLOSE  =   $10  ; CLOSE
 SCSEND   =   $20  ; SEND
-SCSENDMAC =  $21  ; SEND MAC
-SCSENDKEEP = $22  ; SEND KEEP ALIVE
 SCRECV   =   $40  ; RECV
 
 ; SOCKET STATUS
-STCLOSED =   $00
 STINIT   =   $13
-STLISTEN =   $14
 STESTABLISHED = $17
-STCLOSEWAIT = $1C
-STUDP    =   $22
-STIPRAW  =   $32
-STMAXRAW =   $42
-STPPOE   =   $5F
 
 ; MONITOR SUBROUTINES
 KBD      =   $C000
@@ -122,9 +105,6 @@ PRNTAX   =   $F941
 
 ; ZERO-PAGE STORAGE
 PTR      =   $06  ; TODO: we only use this for connection retry count
-GETSIZE  =   $08  ; 2 BYTES FOR RX_RSR
-GETOFFSET =  $0A  ; 2 BYTES FOR OFFSET ADDR
-GETSTARTADR = $0C ; 2 BYTES FOR PHYSICAL ADDR
 
 ; this is the main binary entrypoint (it will be linked at 0x800)
 .segment "LOWCODE"
@@ -284,6 +264,9 @@ ERRMSG: .byte $d3,$cf,$c3,$cb,$c5,$d4,$a0,$c3,$cf,$d5,$cc,$c4,$a0,$ce,$cf,$d4,$a
     .byte $8D,$00
 
 SETUP:
+
+    ; TODO: Read header from video
+
     JMP init_mainloop
 
 .segment "CODE"
@@ -321,7 +304,8 @@ init_mainloop:
 
     STA $C054 ; MAIN memory active
 
-    ; establish invariant expected by decode loop
+    ; establish invariants expected by decode loop
+    LDY #>RXBASE ; High byte of socket 0 receive buffer
     LDX #$00
 
 ; This is the main audio/video decode loop.
@@ -348,96 +332,76 @@ init_mainloop:
 
 ; Somewhat magically, the cycle timings all align on multiples of 73 (with tick intervals
 ; alternating 36 and 37 cycles, as in the "neutral" (i.e. 50% speaker duty cycle)
-; op_tick_36_* opcodes), without much work needed to optimize this. I'm pretty sure there's
-; still "unnecessary" work being done (e.g. low address bytes that are always 0) but there's
-; need to work harder since we'd end up having to pad them back anyway.
+; op_tick_36_* opcodes), without much work needed to optimize this.
 ;
 ; With a 73 cycle fundamental opcode (speaker) period and 1MHz clock speed, this gives a
 ; 14364 Hz "carrier" for the audio DAC, which is slightly audible (at least to my ageing
 ; ears) but quite acceptable.
 ;
-; i.e. we get about 14364 player opcodes/second, with the ACK "slow path" costing 6 opcodes.
-; Each of the "fat" audio/video opcodes results in storing 4 video bytes, so we store
-; about 56KB of video data per second.
+; i.e. we get about 14364 player opcodes/second, with the op_ack + CHECKRECV + op_nop
+; "slow path" costing 2 opcodes.  Each of the "fat" audio/video opcodes results in storing
+4 video bytes, so we store about 56KB of video data per second.
 ;
 ; With 192x40 = 7680 visible bytes on the hires screen, this means we can do about 7.5 full
 ; page redraws/sec; but the effective frame rate will usually be much higher than this
 ; since we only prioritize the parts of the screen that are changing between frames.
 
-; Check for any received data
+; Wait until we have enough received data, and
+;
+; Notice that this has the only conditional opcodes in the entire decode loop ;-)
+;
+; Calling invariants:
+; X = 0
+; Y register has the high byte of the W5100 address pointer in the RX socket code, so we
+; can't trash this until we are ready to point back there.
 CHECKRECV:
     BIT tick        ; 4
 
-    LDA #<S0RXRSR   ; 2 S0 RECEIVED SIZE REGISTER
+    LDA #<S0RXRSR   ; 2 Socket 0 Received Size register
     STA WADRL       ; 4
-    LDA WDATA       ; 4 HIGH BYTE OF RECEIVED SIZE
-    ORA WDATA       ; 4 LOW BYTE
-    BNE RECV        ; 2 THERE IS DATA
+    LDA WDATA       ; 4 High byte of received size
+    CMP #$08        ; 2 expect at least 2k
+    ; TODO: check this doesn't cross a page bdy or it will add a cycle
+    BCS RECV        ; 3 There is data...we don't care exactly how much because it's at least 2K
 
-    ; Not sure whether this delay is needed?
+    ; TODO: Not sure whether this delay is needed?
     NOP ; Little delay ...
     NOP
     JMP CHECKRECV   ; Check again
 
-; THERE IS DATA TO READ - COMPUTE THE PHYSICAL ADDRESS
-RECV:
-    LDA #<S0RXRSR ; 2 GET RECEIVED SIZE AGAIN
-    STA WADRL ; 4
-    LDA WDATA ; 4
+; There is data to read - restore W5100 address pointer where we last found it
+;
+; It turns out that the W5100 automatically wraps the address pointer at the end of the 8K RX/TX buffers
+; Since we're using an 8K socket, that means we don't have to do any work to manage the read pointer!
+RECV: ; 15 cycles so far
 
-    ; expect at least 2k more data present.  The decoder does not do any implicit management
-    ; of the TCP socket buffer, unless instructed to by the video byte stream.  This
-    ; opcode is scheduled every 2k bytes, so we'd better not fall off the end of the stream.
-    CMP #$08 ; 2 expect at least 2k
-    bcs @L ; 3 branch should mostly be taken, pads out the next tick to 36 cycles
-    BCC CHECKRECV ; not yet
+    ; point W5100 back into the RX buffer where we left off in op_ack
+    STY WADRH  ; 4
+    STX WADRL  ; 4 X=0 here from op_ack
 
-@L:
-    BIT tick ; 4 (36 cycles)
+    ; Check for keypress and pause the video
+@0: BIT KBD ; 4
+    ; TODO: check this doesn't cross a page bdy or it will add a cycle
+    BPL @2 ; 3 nope
 
-    STA GETSIZE+1 ; 4
-    LDA WDATA ; 4
-    STA GETSIZE ; 4 low byte (this should be 0 i.e. we could optimize this away, but we dont need to bother because the cycle timings work out anyway)
+    ; Wait for second keypress to resume
+    BIT KBDSTRB ; clear strobe
+@1: BIT KBD
+    BPL @1
+    BIT KBDSTRB ; clear strobe
 
-; reset address pointer to socket buffer
-; CALCULATE OFFSET ADDRESS USING READ POINTER AND RX MASK
-    LDA #<S0RXRD ; 2
-    STA WADRL ; 4
+    ; fall through - tick timings don't matter
 
-    LDA WDATA ; 4 HIGH BYTE
-    AND #>RXMASK ; 2
-    STA GETOFFSET+1,X ; 5 - using X=0 to get an extra cycle before next tick
-    LDA WDATA ; 4 LOW BYTE
+; pad cycles to keep ticking on 36/37 cycle cadence
+; TODO: what can we do with the luxury of 16 unused cycles?!
+@2: ; 30 so far
+    NOP ; 2
+    BIT tick ; 4 ; 36
 
-    BIT tick ; 4 (37 cycles)
-    AND #<RXMASK ; 2
-
-    STA GETOFFSET ; 4
-
-    ; CALCULATE PHYSICAL ADDRESS WITHIN W5100 RX BUFFER
-    CLC ; 2
-    LDA GETOFFSET ; 4
-    ADC #<RXBASE ; 2
-    STA GETSTARTADR ; 4
-
-    LDA GETOFFSET+1 ; 4
-    ADC #>RXBASE ; 2
-    STA GETSTARTADR+1 ; 4
-
-    ; SET BUFFER ADDRESS ON W5100
-    LDA GETSTARTADR+1 ; 4 HIGH BYTE FIRST
-
-    BIT tick ; 4 (36)
-    STA WADRH ;4
-
-    LDA GETSTARTADR ; 4
-    STA WADRL ; 4
-
-    ; ensure invariant expected by inner loop
-    ; it's probably already fine, but we have 2 cycles to spare anyway ;)
-    LDX #$00 ; 2
-
-    ; fall through to op_nop
+    NOP ; 2
+    STA dummy ; 4
+    STA dummy ; 4
+    STA dummy ; 4
 
 op_nop:
     LDY WDATA ; 4
@@ -445,7 +409,7 @@ op_nop:
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    JMP op_nop ; 3 ; 37 with following tick
+    JMP op_nop ; 3 ; 23 with following tick (37 in fallthrough case)
 
 ; Build macros for "fat" opcodes that do the following:
 ; - tick twice, N cycles apart (N = 4 .. 66 in steps of 2)
@@ -1283,9 +1247,6 @@ op_terminate:
 ; In order to simplify the buffer management we expect this ACK opcode to consume
 ; the last 4 bytes in a 2K "TCP frame".  i.e. we can assume that we need to consume
 ; exactly 2K from the W5100 socket buffer.
-;
-; TODO: actually we are underrunning by 2 bytes currently, we've only consumed 2
-; bytes of 4 by this point.
 op_ack:
     BIT tick ; 4
 
@@ -1294,33 +1255,44 @@ op_ack:
     LDA WDATA ; 4
     STA @D+1 ; 4
 @D:
-    STA $C054 ; 4 low-byte is modified
+    STA $C0FF ; 4 low-byte is modified
     LDA WDATA ; 4 dummy read of last byte in TCP frame
 
-    CLC ; 2
-    LDA #>S0RXRD ; 2 NEED HIGH BYTE HERE
+    ; Save the W5100 address pointer so we can come back here later
+    ; We know the low-order byte is 0 because Socket RX memory is page-aligned and so is 2K frame.
+    ; IMPORTANT - from now on until we restore this in RECV, we can't trash the Y register!
+    LDY WADRH ; 4
+
+    ; Read Received Read pointer
+    LDA #>S0RXRD ; 2
     STA WADRH ; 4
     LDX #<S0RXRD ; 2
     STX WADRL ; 4
 
-    NOP ; 2
-    BIT tick ; 4 (36) ; does not affect Carry bit
+    BIT tick ; 4 (36)
 
-    ; No need to read/modify low byte since it is always guaranteed to be 0 (since we are at the end of a 2K frame)
-    LDA WDATA ; 4 HIGH BYTE
+    LDA WDATA ; 4 Read high byte
+    ; No need to read low byte since it's guaranteed to be 0 since we're at the end of a 2K frame.
 
-    ADC #$08 ; 2 Add high byte of received size (always constant
-    STX WADRL ; 4 Reset address pointer, still have it in X
-    STA WDATA ; 4 Store high byte (no need to store low byte since it's 0)
+    ; Update new Received Read pointer
+    ; We have received an additional 2KB
+    CLC ; 2
+    ADC #$08 ; 2
 
-; SEND THE RECV COMMAND
+    STX WADRL ; 4 Reset address pointer, X still has #<S0RXRD
+    STA WDATA ; 4 Store high byte
+    ; No need to store low byte since it's unchanged at 0
+
+    ; Send the Receive command
     LDA #<S0CR ; 2
     STA WADRL ; 4
     LDA #SCRECV ; 2
     STA WDATA ; 4
 
-    NOP ; 2 ; see, we even have cycles left over!
-    NOP ; 2
+    ; This will do double-duty:
+    ; - restoring the invariant expected by the op_tick opcodes
+    ; - used as the low byte for resetting the W5100 address pointer when we're ready to start processing more data
+    LDX #$00 ; 2 restore invariant for dispatch loop
 
     JMP CHECKRECV ; 3 (37 with following BIT tick)
 
