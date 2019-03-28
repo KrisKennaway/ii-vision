@@ -340,7 +340,7 @@ init_mainloop:
 ;
 ; i.e. we get about 14364 player opcodes/second, with the op_ack + CHECKRECV + op_nop
 ; "slow path" costing 2 opcodes.  Each of the "fat" audio/video opcodes results in storing
-4 video bytes, so we store about 56KB of video data per second.
+; 4 video bytes, so we store about 56KB of video data per second.
 ;
 ; With 192x40 = 7680 visible bytes on the hires screen, this means we can do about 7.5 full
 ; page redraws/sec; but the effective frame rate will usually be much higher than this
