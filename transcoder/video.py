@@ -1,5 +1,6 @@
 """Encode a sequence of images as an optimized stream of screen changes."""
 
+import enum
 import heapq
 import os
 import queue
@@ -16,6 +17,11 @@ from PIL import Image
 import edit_distance
 import opcodes
 import screen
+
+
+class Mode(enum.Enum):
+    HGR = 0
+    DHGR = 1
 
 
 class Video:
