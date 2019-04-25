@@ -13,15 +13,17 @@ class Movie:
             self, filename: str,
             every_n_video_frames: int = 1,
             audio_normalization: float = None,
-            max_bytes_out: int = None
+            max_bytes_out: int = None,
+            video_mode: video.Mode = video.Mode.HGR,
     ):
         self.filename = filename  # type: str
         self.every_n_video_frames = every_n_video_frames  # type: int
         self.max_bytes_out = max_bytes_out  # type: int
+        self.video_mode = video_mode  # type: video.Mode
 
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
-        self.video = video.Video(filename)  # type: video.Video
+        self.video = video.Video(filename, mode=video_mode)  # type: video.Video
 
         self.stream_pos = 0  # type: int
 
@@ -44,8 +46,10 @@ class Movie:
         :return:
         """
         video_frames = self.video.frames()
+        main_seq = None
+        aux_seq = None
 
-        yield opcodes.Header(mode=video.Mode.DHGR)
+        yield opcodes.Header(mode=self.video_mode)
 
         for au in self.audio.audio_stream():
             self.cycles += self.audio.cycles_per_tick
@@ -56,9 +60,11 @@ class Movie:
                     print("Starting frame %d" % self.video.frame_number)
                     main_seq = self.video.encode_frame(
                         main, self.video.memory_map, self.video.update_priority)
-                    aux_seq = self.video.encode_frame(
-                        aux, self.video.aux_memory_map,
-                        self.video.aux_update_priority)
+
+                    if aux:
+                        aux_seq = self.video.encode_frame(
+                            aux, self.video.aux_memory_map,
+                            self.video.aux_update_priority)
 
             # au has range -15 .. 16 (step=1)
             # Tick cycles are units of 2
@@ -95,10 +101,13 @@ class Movie:
             if socket_pos >= 2044:
                 # 2 op_ack address bytes + 2 payload bytes from ACK must
                 # terminate 2K stream frame
+                if self.video_mode == video.Mode.DHGR:
+                    # Flip-flop between MAIN and AUX banks
+                    self.aux_memory_bank = not self.aux_memory_bank
+
                 yield from self._emit_bytes(opcodes.Ack(self.aux_memory_bank))
                 assert self.stream_pos % 2048 == 0, self.stream_pos % 2048
-                # Flip-flop between MAIN and AUX banks
-                self.aux_memory_bank = not self.aux_memory_bank
+
             yield from self._emit_bytes(op)
 
         yield from self.done()

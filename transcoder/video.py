@@ -32,8 +32,10 @@ class Video:
     def __init__(
             self,
             filename: str,
+            mode: Mode = Mode.HGR
     ):
         self.filename = filename  # type: str
+        self.mode = mode  # type: Mode
 
         self._reader = skvideo.io.FFmpegReader(filename)
 
@@ -51,13 +53,14 @@ class Video:
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
             screen_page=1)  # type: screen.MemoryMap
-        self.aux_memory_map = screen.MemoryMap(
-            screen_page=1)  # type: screen.MemoryMap
+        if self.mode == mode.DHGR:
+            self.aux_memory_map = screen.MemoryMap(
+                screen_page=1)  # type: screen.MemoryMap
 
         # Accumulates pending edit weights across frames
         self.update_priority = np.zeros((32, 256), dtype=np.int64)
-
-        self.aux_update_priority = np.zeros((32, 256), dtype=np.int64)
+        if self.mode == mode.DHGR:
+            self.aux_update_priority = np.zeros((32, 256), dtype=np.int64)
 
     def tick(self, cycles: int) -> bool:
         if cycles > (self.cycles_per_frame * self.frame_number):
@@ -117,30 +120,65 @@ class Video:
 
         q = queue.Queue(maxsize=10)
 
+        def _hgr_decode(_idx, _frame):
+            outfile = "%s/%08dC.BIN" % (frame_dir, _idx)
+            bmpfile = "%s/%08d.bmp" % (frame_dir, _idx)
+
+            try:
+                os.stat(outfile)
+            except FileNotFoundError:
+                _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
+                _frame.save(bmpfile)
+
+                # TODO: parametrize palette
+                subprocess.call([
+                    "/usr/local/bin/bmp2dhr", bmpfile, "hgr",
+                    "P0",  # Kegs32 RGB Color palette(for //gs playback)
+                    "D9"  # Buckels dither
+                ])
+
+                os.remove(bmpfile)
+
+            _main = np.fromfile(outfile, dtype=np.uint8)
+
+            return _main, None
+
+        def _dhgr_decode(_idx, _frame):
+            mainfile = "%s/%08d.BIN" % (frame_dir, _idx)
+            auxfile = "%s/%08d.AUX" % (frame_dir, _idx)
+
+            bmpfile = "%s/%08d.bmp" % (frame_dir, _idx)
+
+            try:
+                os.stat(mainfile)
+                os.stat(auxfile)
+            except FileNotFoundError:
+                _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
+                _frame.save(bmpfile)
+
+                # TODO: parametrize palette
+                subprocess.call([
+                    "/usr/local/bin/bmp2dhr", bmpfile, "dhgr",
+                    "P0",  # Kegs32 RGB Color palette (for //gs playback)
+                    "A",  # Output separate .BIN and .AUX files
+                    "D9"  # Buckels dither
+                ])
+
+                os.remove(bmpfile)
+
+            _main = np.fromfile(mainfile, dtype=np.uint8)
+            _aux = np.fromfile(auxfile, dtype=np.uint8)
+
+            return _main, _aux
+
         def worker():
             """Invoke bmp2dhr to encode input image frames and push to queue."""
             for _idx, _frame in enumerate(self._frame_grabber()):
-                mainfile = "%s/%08d.BIN" % (frame_dir, _idx)
-                auxfile = "%s/%08d.AUX" % (frame_dir, _idx)
-
-                bmpfile = "%s/%08d.bmp" % (frame_dir, _idx)
-
-                try:
-                    os.stat(mainfile)
-                    os.stat(auxfile)
-                except FileNotFoundError:
-                    _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
-                    _frame.save(bmpfile)
-
-                    subprocess.call(
-                        ["/usr/local/bin/bmp2dhr", bmpfile, "dhgr", "P0", "A",
-                         "D9"])
-
-                    os.remove(bmpfile)
-
-                main = np.fromfile(mainfile, dtype=np.uint8)
-                aux = np.fromfile(auxfile, dtype=np.uint8)
-                q.put((main, aux))
+                if self.mode == Mode.DHGR:
+                    res = _dhgr_decode(_idx, _frame)
+                else:
+                    res = _hgr_decode(_idx, _frame)
+                q.put(res)
 
             q.put((None, None))
 
@@ -148,14 +186,19 @@ class Video:
         t.start()
 
         while True:
+
             main, aux = q.get()
             if main is None:
                 break
 
-            yield (
-                screen.FlatMemoryMap(screen_page=1, data=main).to_memory_map(),
-                screen.FlatMemoryMap(screen_page=1, data=aux).to_memory_map()
-            )
+            main_map = screen.FlatMemoryMap(
+                screen_page=1, data=main).to_memory_map()
+            if aux is None:
+                aux_map = None
+            else:
+                aux_map = screen.FlatMemoryMap(
+                    screen_page=1, data=aux).to_memory_map()
+            yield (main_map, aux_map)
             q.task_done()
 
         t.join()

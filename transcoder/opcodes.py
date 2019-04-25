@@ -112,7 +112,7 @@ class Ack(Opcode):
     def emit_data(self) -> Iterator[int]:
         # Flip $C054 or $C055 soft-switches to steer subsequent writes to
         # MAIN/AUX screen memory
-        yield 0x54 if self.aux_active else 0x55
+        yield 0x55 if self.aux_active else 0x54
         # Dummy byte to pad out TCP frame
         yield 0xff
 
