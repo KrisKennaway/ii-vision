@@ -44,7 +44,8 @@ class Movie:
         :return:
         """
         video_frames = self.video.frames()
-        video_seq = None
+
+        yield opcodes.Header(mode=video.Mode.DHGR)
 
         for au in self.audio.audio_stream():
             self.cycles += self.audio.cycles_per_tick
@@ -95,6 +96,7 @@ class Movie:
                 # 2 op_ack address bytes + 2 payload bytes from ACK must
                 # terminate 2K stream frame
                 yield from self._emit_bytes(opcodes.Ack(self.aux_memory_bank))
+                assert self.stream_pos % 2048 == 0, self.stream_pos % 2048
                 # Flip-flop between MAIN and AUX banks
                 self.aux_memory_bank = not self.aux_memory_bank
             yield from self._emit_bytes(op)
