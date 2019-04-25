@@ -318,7 +318,7 @@ _op_header_hgr:
     
     ; DHGR mode
 
-    STA TEXTOFF ; XXX move later
+    STA TEXTOFF
     STA HIRESON
     STA DHIRESON
     STA COL80ON
