@@ -11,6 +11,7 @@ def _op_cmds():
     """Construct names of player opcodes."""
 
     op_cmds = [
+        "HEADER",
         "TERMINATE",
         "NOP",
         "ACK",
@@ -45,7 +46,7 @@ class Opcode:
 
     @staticmethod
     def emit_command(opcode: "Opcode") -> Iterator[int]:
-        # Emit address of next opcode
+        # Emit address of opcode
         yield opcode._START >> 8
         yield opcode._START & 0xff
 
@@ -54,6 +55,35 @@ class Opcode:
 
     def apply(self, state: Machine):
         pass
+
+
+class Header(Opcode):
+    """Video header opcode."""
+    COMMAND = OpcodeCommand.HEADER
+
+    def __init__(self, mode: "video.Mode"):
+        self.video_mode = mode
+
+    def __data_eq__(self, other):
+        return self.video_mode == other.video_mode
+
+    @staticmethod
+    def emit_command(opcode: "Opcode") -> Iterator[int]:
+        # This is special in that it does not explicitly vector to the next
+        # opcode
+        return
+
+    def emit_data(self) -> Iterator[int]:
+        # Pad bytes to same size as Tick opcode, to make it easier to schedule
+        # ACK opcodes.
+        yield 0xff
+        yield 0xff
+        yield 0xff
+        yield 0xff
+        yield 0xff
+        yield 0xff
+
+        yield self.video_mode.value
 
 
 class Nop(Opcode):
@@ -158,6 +188,7 @@ def _fill_opcode_addresses():
 
     _OPCODE_ADDRS = _parse_symbol_table()
     _OPCODE_CLASSES = {
+        OpcodeCommand.HEADER: Header,
         OpcodeCommand.TERMINATE: Terminate,
         OpcodeCommand.NOP: Nop,
         OpcodeCommand.ACK: Ack,
