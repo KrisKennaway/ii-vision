@@ -54,6 +54,9 @@ class Opcode:
         return
 
     def apply(self, state: Machine):
+        # TODO: we are no longer using this, but perhaps should be - it might
+        # be easier to apply machine state changes (screen/memory
+        # representations) via callback instead of tracking them individually.
         pass
 
 
