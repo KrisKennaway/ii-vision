@@ -96,6 +96,9 @@ class Movie:
             if self.max_bytes_out and self.stream_pos >= self.max_bytes_out:
                 yield from self.done()
                 return
+
+            yield from self._emit_bytes(op)
+
             # Keep track of where we are in TCP client socket buffer
             socket_pos = self.stream_pos % 2048
             if socket_pos >= 2044:
@@ -107,8 +110,6 @@ class Movie:
 
                 yield from self._emit_bytes(opcodes.Ack(self.aux_memory_bank))
                 assert self.stream_pos % 2048 == 0, self.stream_pos % 2048
-
-            yield from self._emit_bytes(op)
 
         yield from self.done()
 
