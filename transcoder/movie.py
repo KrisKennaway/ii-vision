@@ -23,8 +23,11 @@ class Movie:
 
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
+
+        self.frame_sequencer = video.FileFrameSequencer(
+            filename, mode=video_mode)
         self.video = video.Video(
-            filename, mode=video_mode,
+            self.frame_sequencer, mode=video_mode,
             ticks_per_second=self.audio.sample_rate
         )  # type: video.Video
 
@@ -44,7 +47,7 @@ class Movie:
 
         :return:
         """
-        video_frames = self.video.frames()
+        video_frames = self.frame_sequencer.frames()
         main_seq = None
         aux_seq = None
 
@@ -61,21 +64,17 @@ class Movie:
                 if ((self.video.frame_number - 1) % self.every_n_video_frames
                         == 0):
                     print("Starting frame %d" % self.video.frame_number)
-                    main_seq = self.video.encode_frame(
-                        main, self.video.memory_map, self.video.update_priority)
+                    main_seq = self.video.encode_frame(main, is_aux=False)
 
                     if aux:
-                        aux_seq = self.video.encode_frame(
-                            aux, self.video.aux_memory_map,
-                            self.video.aux_update_priority)
-
+                        aux_seq = self.video.encode_frame(aux, is_aux=True)
             # au has range -15 .. 16 (step=1)
             # Tick cycles are units of 2
             tick = au * 2  # -30 .. 32 (step=2)
             tick += 34  # 4 .. 66 (step=2)
 
             (page, content, offsets) = next(
-                        aux_seq if self.aux_memory_bank else main_seq)
+                aux_seq if self.aux_memory_bank else main_seq)
 
             yield opcodes.TICK_OPCODES[(tick, page)](content, offsets)
 

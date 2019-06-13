@@ -40,7 +40,7 @@ def main(args):
         video_mode=video.Mode[args.video_mode]
     )
 
-    print("Input frame rate = %f" % m.video.input_frame_rate)
+    print("Input frame rate = %f" % m.frame_sequencer.input_frame_rate)
 
     if args.output:
         out_filename = args.output
