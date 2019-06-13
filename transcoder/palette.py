@@ -32,14 +32,20 @@ palette = {
 }
 
 
-# Compute matrix of CIE2000 delta values for this palette, representing
-# perceptual distance between colours.
-diff_matrix = np.ndarray(shape=(16, 16), dtype=np.int)
-for colour1, a in palette.items():
-    alab = colormath.color_conversions.convert_color(
-        a, colormath.color_objects.LabColor)
-    for colour2, b in palette.items():
-        blab = colormath.color_conversions.convert_color(
-            b, colormath.color_objects.LabColor)
-        diff_matrix[colour1.value, colour2.value] = int(
-            colormath.color_diff.delta_e_cie2000(alab, blab))
+def compute_diff_matrix():
+    # Compute matrix of CIE2000 delta values for this palette, representing
+    # perceptual distance between colours.
+    dm = np.ndarray(shape=(16, 16), dtype=np.int)
+
+    for colour1, a in palette.items():
+        alab = colormath.color_conversions.convert_color(
+            a, colormath.color_objects.LabColor)
+        for colour2, b in palette.items():
+            blab = colormath.color_conversions.convert_color(
+                b, colormath.color_objects.LabColor)
+            dm[colour1.value, colour2.value] = int(
+                colormath.color_diff.delta_e_cie2000(alab, blab))
+    return dm
+
+
+diff_matrix = compute_diff_matrix()
