@@ -1,16 +1,9 @@
 """Various representations of Apple II video display."""
 
+import functools
+import pickle
+
 import numpy as np
-
-
-# TODO: support DHGR
-
-
-def bitmap_similarity(a1: np.array, a2: np.array) -> float:
-    """Measure bitwise % similarity between two bitmap arrays"""
-    bits_different = np.sum(np.logical_xor(a1, a2)).item()
-
-    return 1. - (bits_different / (np.shape(a1)[0] * np.shape(a1)[1]))
 
 
 def y_to_base_addr(y: int, page: int = 0) -> int:
@@ -30,6 +23,7 @@ Y_TO_BASE_ADDR = [
 ]
 
 # Array mapping (page, offset) to x (byte) and y coords respectively
+# TODO: is np.dtype(int) faster for these?
 PAGE_OFFSET_TO_X = np.zeros((32, 256), dtype=np.uint8)
 PAGE_OFFSET_TO_Y = np.zeros((32, 256), dtype=np.uint8)
 
@@ -66,111 +60,6 @@ def _populate_mappings():
 
 
 _populate_mappings()
-
-
-class Bytemap:
-    """Bitmap array with horizontal pixels packed into bytes."""
-
-    def __init__(self, bytemap: np.array = None):
-        self.bytemap = None  # type: np.array
-        if bytemap is not None:
-            if bytemap.shape != (192, 40):
-                raise ValueError("Unexpected shape: %r" % (bytemap.shape,))
-            self.bytemap = bytemap
-        else:
-            self.bytemap = np.zeros((192, 40), dtype=np.uint8)
-
-    def to_memory_map(self, screen_page: int) -> "MemoryMap":
-        # Numpy magic that constructs a new array indexed by (page, offset)
-        # instead of (y, x).
-        mmap = self.bytemap[PAGE_OFFSET_TO_Y, PAGE_OFFSET_TO_X]
-        # Reset whatever values ended up in the screen holes after this mapping
-        # (which came from default 0 values in PAGE_OFFSET_TO_X)
-        mmap[SCREEN_HOLES] = 0
-        return MemoryMap(screen_page, mmap)
-
-
-class Bitmap:
-    XMAX = None  # type: int
-    YMAX = None  # type: int
-
-    def __init__(self, bitmap: np.array = None):
-        if bitmap is None:
-            self.bitmap = np.zeros((self.YMAX, self.XMAX), dtype=bool)
-        else:
-            if bitmap.shape != (self.YMAX, self.XMAX):
-                raise ValueError("Unexpected shape: %r" % (bitmap.shape,))
-            self.bitmap = bitmap
-
-    def randomize(self) -> None:
-        self.bitmap = np.random.randint(
-            2, size=(self.YMAX, self.XMAX), dtype=bool)
-
-    @staticmethod
-    def _to_bytemap(bitmap) -> Bytemap:
-        # Insert zero column after every 7
-        pixels = bitmap.copy()
-        for i in range(pixels.shape[1] // 7 - 1, -1, -1):
-            pixels = np.insert(pixels, (i + 1) * 7, False, axis=1)
-
-        # packbits is big-endian so we flip the array before and after to
-        # invert this
-        return Bytemap(
-            np.flip(np.packbits(np.flip(pixels, axis=1), axis=1), axis=1))
-
-    def to_bytemap(self) -> Bytemap:
-        return self._to_bytemap(self.bitmap)
-
-    def to_memory_map(self, screen_page: int) -> "MemoryMap":
-        return self.to_bytemap().to_memory_map(screen_page)
-
-    @staticmethod
-    def _from_bytemap(bytemap: Bytemap) -> np.array:
-        bm = np.unpackbits(bytemap.bytemap, axis=1)
-        bm = np.delete(bm, np.arange(0, bm.shape[1], 8), axis=1)
-
-        # Need to flip each 7-bit sequence
-        reorder_cols = []
-        for i in range(bm.shape[1] // 7):
-            for j in range((i + 1) * 7 - 1, i * 7 - 1, -1):
-                reorder_cols.append(j)
-        bm = bm[:, reorder_cols]
-
-        return np.array(bm, dtype=np.bool)
-
-    @classmethod
-    def from_bytemap(cls, bytemap: Bytemap) -> "Bitmap":
-        return cls(cls._from_bytemap(bytemap))
-
-
-class HGR140Bitmap(Bitmap):
-    XMAX = 140  # double-wide pixels to not worry about colour effects
-    YMAX = 192
-
-    def to_bytemap(self) -> Bytemap:
-        # Double each pixel horizontally
-        return self._to_bytemap(np.repeat(self.bitmap, 2, axis=1))
-
-    @classmethod
-    def from_bytemap(cls, bytemap: Bytemap) -> "HGR140Bitmap":
-        # Undouble pixels
-        bitmap = cls._from_bytemap(bytemap)
-        bitmap = np.array(
-            np.delete(bitmap, np.arange(0, bitmap.shape[1], 2), axis=1),
-            dtype=np.bool
-        )
-
-        return HGR140Bitmap(bitmap)
-
-
-class HGRBitmap(Bitmap):
-    XMAX = 280
-    YMAX = 192
-
-
-class DHGRBitmap(Bitmap):
-    XMAX = 560
-    YMAX = 192
 
 
 class FlatMemoryMap:
@@ -223,11 +112,92 @@ class MemoryMap:
     def to_flat_memory_map(self) -> FlatMemoryMap:
         return FlatMemoryMap(self.screen_page, self.page_offset.reshape(8192))
 
-    def to_bytemap(self) -> Bytemap:
-        bytemap = self.page_offset[X_Y_TO_PAGE, X_Y_TO_OFFSET]
-        return Bytemap(bytemap)
-
     def write(self, page: int, offset: int, val: int) -> None:
         """Updates screen image to set (page, offset)=val (inc. screen holes)"""
 
         self.page_offset[page - self._page_start][offset] = val
+
+
+class DHGRBitmap:
+    BYTE_MASK32 = [
+        #     3333333222222211111110000000 <- byte 0.3
+        #
+        # 33222222222211111111110000000000 <- bit pos in uint32
+        # 10987654321098765432109876543210
+        # 0000GGGGFFFFEEEEDDDDCCCCBBBBAAAA <- pixel A..G
+        #     3210321032103210321032103210  <- bit pos in A..G pixel
+        0b00000000000000000000000011111111,  # byte 0 influences A,B
+        0b00000000000000001111111111110000,  # byte 1 influences B,C,D
+        0b00000000111111111111000000000000,  # byte 2 influences D,E,F
+        0b00001111111100000000000000000000,  # byte 3 influences F,G
+    ]
+
+    # How much to right-shift bits after masking to bring into int8/int12 range
+    BYTE_SHIFTS = [0, 4, 12, 20]
+
+    # Load edit distance matrices for masked, shifted byte 0..3 values
+    # TODO: should go somewhere else since we don't use it here at all
+    with open("transcoder/edit_distance.pickle", "rb") as ed:
+        edit_distances = pickle.load(ed)
+
+    def __init__(self, main_memory: MemoryMap, aux_memory: MemoryMap):
+        self.main_memory = main_memory
+        self.aux_memory = aux_memory
+
+        self.packed = np.empty(shape=(32, 128), dtype=np.uint32)
+        self._pack()
+
+    def _pack(self):
+        """Interleave and pack aux and main memory into 28-bit uint32 array"""
+
+        # Palette bit is unused for DHGR so mask it out
+        aux = (self.aux_memory.page_offset & 0x7f).astype(np.uint32)
+        main = (self.main_memory.page_offset & 0x7f).astype(np.uint32)
+
+        # Interleave aux and main memory columns and pack 7-bit masked values
+        # into a 28-bit value.  This sequentially encodes 7 4-bit DHGR pixels.
+        # See make_data_tables.py for more discussion about this representation.
+        self.packed = (
+                aux[:, 0::2] +
+                (main[:, 0::2] << 7) +
+                (aux[:, 1::2] << 14) +
+                (main[:, 1::2] << 21)
+        )
+
+    @staticmethod
+    @functools.lru_cache(None)
+    def interleaved_byte_offset(x_byte: int, is_aux: bool) -> int:
+        """Returns 0..3 offset in ByteTuple for a given x_byte and is_aux"""
+        is_odd = x_byte % 2 == 1
+        if is_aux:
+            if is_odd:
+                return 2
+            return 0
+        else:  # main memory
+            if is_odd:
+                return 3
+            else:
+                return 1
+
+    @staticmethod
+    def masked_update(byte_offset: int, old_value, new_value: int):
+        # Mask out 7-bit value where update will go
+        masked_value = old_value & ~(0x7f << (7 * byte_offset))
+
+        update = (new_value & 0x7f) << (7 * byte_offset)
+
+        return masked_value ^ update
+
+    def apply(self, page: int, offset: int, is_aux: bool, value: int):
+        """Update packed representation of changing main/aux memory."""
+
+        byte_offset = self.interleaved_byte_offset(offset, is_aux)
+        packed_offset = offset // 2
+
+        self.packed[page, packed_offset] = self.masked_update(
+            byte_offset, self.packed[page, packed_offset], value)
+
+    def mask_and_shift_data(self, data, byte_offset):
+        """Masks and shifts data into the 8 or 12-bit range."""
+        return (data & self.BYTE_MASK32[byte_offset]) >> (
+            self.BYTE_SHIFTS[byte_offset])
