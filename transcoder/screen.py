@@ -2,8 +2,12 @@
 
 import functools
 import pickle
+from typing import Union
 
 import numpy as np
+
+# Type annotation for cases where we may process either an int or a numpy array.
+IntOrArray = Union[int, np.ndarray]
 
 
 def y_to_base_addr(y: int, page: int = 0) -> int:
@@ -147,7 +151,7 @@ class DHGRBitmap:
         self.packed = np.empty(shape=(32, 128), dtype=np.uint32)
         self._pack()
 
-    def _pack(self):
+    def _pack(self) -> None:
         """Interleave and pack aux and main memory into 28-bit uint32 array"""
 
         # Palette bit is unused for DHGR so mask it out
@@ -180,7 +184,10 @@ class DHGRBitmap:
                 return 1
 
     @staticmethod
-    def masked_update(byte_offset: int, old_value, new_value: int):
+    def masked_update(
+            byte_offset: int,
+            old_value: IntOrArray,
+            new_value: int) -> IntOrArray:
         # Mask out 7-bit value where update will go
         masked_value = old_value & ~(0x7f << (7 * byte_offset))
 
@@ -188,7 +195,7 @@ class DHGRBitmap:
 
         return masked_value ^ update
 
-    def apply(self, page: int, offset: int, is_aux: bool, value: int):
+    def apply(self, page: int, offset: int, is_aux: bool, value: int) -> None:
         """Update packed representation of changing main/aux memory."""
 
         byte_offset = self.interleaved_byte_offset(offset, is_aux)
@@ -197,7 +204,10 @@ class DHGRBitmap:
         self.packed[page, packed_offset] = self.masked_update(
             byte_offset, self.packed[page, packed_offset], value)
 
-    def mask_and_shift_data(self, data, byte_offset):
+    def mask_and_shift_data(
+            self,
+            data: IntOrArray,
+            byte_offset: int) -> IntOrArray:
         """Masks and shifts data into the 8 or 12-bit range."""
         return (data & self.BYTE_MASK32[byte_offset]) >> (
             self.BYTE_SHIFTS[byte_offset])
