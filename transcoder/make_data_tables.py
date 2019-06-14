@@ -1,3 +1,4 @@
+import bz2
 import functools
 import pickle
 from typing import Iterable
@@ -239,7 +240,9 @@ def main():
 
     # TODO: error distance matrices
 
-    with open("transcoder/edit_distance.pickle", "wb") as out:
+    with bz2.open(
+            "transcoder/edit_distance.pickle.bz2", "wb",
+            compresslevel=9) as out:
         pickle.dump(
             edit, out, protocol=pickle.HIGHEST_PROTOCOL)
 

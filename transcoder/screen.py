@@ -1,5 +1,6 @@
 """Various representations of Apple II video display."""
 
+import bz2
 import functools
 import pickle
 from typing import Union
@@ -141,7 +142,7 @@ class DHGRBitmap:
 
     # Load edit distance matrices for masked, shifted byte 0..3 values
     # TODO: should go somewhere else since we don't use it here at all
-    with open("transcoder/edit_distance.pickle", "rb") as ed:
+    with bz2.open("transcoder/edit_distance.pickle.bz2", "rb") as ed:
         edit_distances = pickle.load(ed)
 
     def __init__(self, main_memory: MemoryMap, aux_memory: MemoryMap):
