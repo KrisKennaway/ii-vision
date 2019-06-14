@@ -3,9 +3,11 @@
 from typing import Iterable, Iterator
 
 import audio
+import frame_grabber
 import machine
 import opcodes
 import video
+from video_mode import VideoMode
 
 
 class Movie:
@@ -14,20 +16,20 @@ class Movie:
             every_n_video_frames: int = 1,
             audio_normalization: float = None,
             max_bytes_out: int = None,
-            video_mode: video.Mode = video.Mode.HGR,
+            video_mode: VideoMode = VideoMode.HGR,
     ):
         self.filename = filename  # type: str
         self.every_n_video_frames = every_n_video_frames  # type: int
         self.max_bytes_out = max_bytes_out  # type: int
-        self.video_mode = video_mode  # type: video.Mode
+        self.video_mode = video_mode  # type: VideoMode
 
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
 
-        self.frame_sequencer = video.FileFrameSequencer(
+        self.frame_grabber = frame_grabber.FileFrameGrabber(
             filename, mode=video_mode)
         self.video = video.Video(
-            self.frame_sequencer, mode=video_mode)  # type: video.Video
+            self.frame_grabber, mode=video_mode)  # type: video.Video
 
         self.stream_pos = 0  # type: int
 
@@ -49,7 +51,7 @@ class Movie:
 
         :return:
         """
-        video_frames = self.frame_sequencer.frames()
+        video_frames = self.frame_grabber.frames()
         main_seq = None
         aux_seq = None
 
@@ -104,7 +106,7 @@ class Movie:
             if socket_pos >= 2044:
                 # 2 op_ack address bytes + 2 payload bytes from ACK must
                 # terminate 2K stream frame
-                if self.video_mode == video.Mode.DHGR:
+                if self.video_mode == VideoMode.DHGR:
                     # Flip-flop between MAIN and AUX banks
                     self.aux_memory_bank = not self.aux_memory_bank
 

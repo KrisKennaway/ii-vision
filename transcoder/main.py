@@ -3,7 +3,7 @@
 import argparse
 
 import movie
-import video
+import video_mode
 
 parser = argparse.ArgumentParser(
     description='Transcode videos to ][Vision format.')
@@ -25,7 +25,7 @@ parser.add_argument(
          'frame rate, which may give better quality for some videos.'
 )
 parser.add_argument(
-    '--video_mode', type=str, choices=video.Mode.__members__.keys(),
+    '--video_mode', type=str, choices=video_mode.VideoMode.__members__.keys(),
     help='Video display mode to encode for (HGR/DHGR)'
 )
 
@@ -37,10 +37,10 @@ def main(args):
         every_n_video_frames=args.every_n_video_frames,
         audio_normalization=args.audio_normalization,
         max_bytes_out=1024. * 1024 * args.max_output_mb,
-        video_mode=video.Mode[args.video_mode]
+        video_mode=video_mode.VideoMode[args.video_mode]
     )
 
-    print("Input frame rate = %f" % m.frame_sequencer.input_frame_rate)
+    print("Input frame rate = %f" % m.frame_grabber.input_frame_rate)
 
     if args.output:
         out_filename = args.output
