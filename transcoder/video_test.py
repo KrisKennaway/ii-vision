@@ -2,14 +2,16 @@
 
 import unittest
 
+import frame_grabber
 import screen
 import video
+import video_mode
 
 
 class TestVideo(unittest.TestCase):
     def test_diff_weights(self):
-        fs = video.FrameSequencer(mode=video.Mode.DHGR)
-        v = video.Video(fs, mode=video.Mode.DHGR)
+        fs = frame_grabber.FrameGrabber(mode=video_mode.VideoMode.DHGR)
+        v = video.Video(fs, mode=video_mode.VideoMode.DHGR)
 
         frame = screen.MemoryMap(screen_page=1)
         frame.page_offset[0, 0] = 0b1111111

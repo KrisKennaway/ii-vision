@@ -4,6 +4,7 @@ import enum
 from typing import Iterator, Tuple
 
 import symbol_table
+import video_mode
 from machine import Machine
 
 
@@ -64,7 +65,7 @@ class Header(Opcode):
     """Video header opcode."""
     COMMAND = OpcodeCommand.HEADER
 
-    def __init__(self, mode: "video.Mode"):
+    def __init__(self, mode: video_mode.VideoMode):
         self.video_mode = mode
 
     def __data_eq__(self, other):
