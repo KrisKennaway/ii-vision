@@ -3,9 +3,10 @@
 import bz2
 import functools
 import pickle
-from typing import Union
+from typing import Union, List
 
 import numpy as np
+import palette
 
 # Type annotation for cases where we may process either an int or a numpy array.
 IntOrArray = Union[int, np.ndarray]
@@ -140,10 +141,15 @@ class DHGRBitmap:
     # How much to right-shift bits after masking to bring into int8/int12 range
     BYTE_SHIFTS = [0, 4, 12, 20]
 
-    # Load edit distance matrices for masked, shifted byte 0..3 values
-    # TODO: should go somewhere else since we don't use it here at all
-    with bz2.open("transcoder/edit_distance.pickle.bz2", "rb") as ed:
-        edit_distances = pickle.load(ed)
+    @staticmethod
+    @functools.lru_cache(None)
+    def edit_distances(palette_id: palette.Palette) -> List[np.ndarray]:
+        """Load edit distance matrices for masked, shifted byte 0..3 values."""
+        data = "transcoder/data/palette_%d_edit_distance.pickle.bz2" % (
+            palette_id.value
+        )
+        with bz2.open(data, "rb") as ed:
+            return pickle.load(ed)  # type: List[np.ndarray]
 
     def __init__(self, main_memory: MemoryMap, aux_memory: MemoryMap):
         self.main_memory = main_memory

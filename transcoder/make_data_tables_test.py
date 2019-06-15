@@ -10,31 +10,15 @@ class TestMakeDataTables(unittest.TestCase):
         self.assertEqual("0FC", make_data_tables.pixel_string(pixels))
 
     def test_pixels_influenced_by_byte_index(self):
-        pixels = (
-            DHGRColours.ORANGE,
-            DHGRColours.GREEN,
-            DHGRColours.BLACK,
-            DHGRColours.BLACK,
-            DHGRColours.BLACK,
-            DHGRColours.BLACK,
-            DHGRColours.BLACK,
-        )
+        pixels = "CB00000"
         self.assertEqual(
-            (DHGRColours.ORANGE, DHGRColours.GREEN),
+            "CB",
             make_data_tables.pixels_influenced_by_byte_index(pixels, 0)
         )
 
-        pixels = (
-            DHGRColours.BLACK,
-            DHGRColours.BROWN,
-            DHGRColours.YELLOW,
-            DHGRColours.GREY1,
-            DHGRColours.BLACK,
-            DHGRColours.BLACK,
-            DHGRColours.BLACK,
-        )
+        pixels = "CBA9000"
         self.assertEqual(
-            (DHGRColours.BROWN, DHGRColours.YELLOW, DHGRColours.GREY1),
+            "BA9",
             make_data_tables.pixels_influenced_by_byte_index(pixels, 1)
         )
 

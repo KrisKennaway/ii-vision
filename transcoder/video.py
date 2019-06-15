@@ -10,6 +10,7 @@ import numpy as np
 import opcodes
 import screen
 from frame_grabber import FrameGrabber
+from palette import Palette
 from video_mode import VideoMode
 
 
@@ -21,7 +22,8 @@ class Video:
     def __init__(
             self,
             frame_grabber: FrameGrabber,
-            mode: VideoMode = VideoMode.HGR
+            mode: VideoMode = VideoMode.HGR,
+            palette: Palette = Palette.NTSC,
     ):
         self.mode = mode  # type: VideoMode
         self.frame_grabber = frame_grabber  # type: FrameGrabber
@@ -29,6 +31,7 @@ class Video:
                 self.CLOCK_SPEED / frame_grabber.input_frame_rate
         )  # type: float
         self.frame_number = 0  # type: int
+        self.palette = palette  # type: Palette
 
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
@@ -214,8 +217,8 @@ class Video:
         heapq.heapify(priorities)
         return priorities
 
-    @staticmethod
     def _diff_weights(
+            self,
             source: screen.DHGRBitmap,
             target: screen.DHGRBitmap,
             is_aux: bool
@@ -229,14 +232,16 @@ class Video:
 
             # Concatenate 8-bit source and target into 16-bit values
             pair0 = (source_pixels0 << 8) + target_pixels0
-            dist0 = source.edit_distances[0][pair0].reshape(pair0.shape)
+            dist0 = source.edit_distances(self.palette)[0][pair0].reshape(
+                pair0.shape)
 
             # Pixels influenced by byte offset 2
             source_pixels2 = source.mask_and_shift_data(source.packed, 2)
             target_pixels2 = target.mask_and_shift_data(target.packed, 2)
             # Concatenate 12-bit source and target into 24-bit values
             pair2 = (source_pixels2 << 12) + target_pixels2
-            dist2 = source.edit_distances[2][pair2].reshape(pair2.shape)
+            dist2 = source.edit_distances(self.palette)[2][pair2].reshape(
+                pair2.shape)
 
             diff[:, 0::2] = dist0
             diff[:, 1::2] = dist2
@@ -246,13 +251,15 @@ class Video:
             source_pixels1 = source.mask_and_shift_data(source.packed, 1)
             target_pixels1 = target.mask_and_shift_data(target.packed, 1)
             pair1 = (source_pixels1 << 12) + target_pixels1
-            dist1 = source.edit_distances[1][pair1].reshape(pair1.shape)
+            dist1 = source.edit_distances(self.palette)[1][pair1].reshape(
+                pair1.shape)
 
             # Pixels influenced by byte offset 3
             source_pixels3 = source.mask_and_shift_data(source.packed, 3)
             target_pixels3 = target.mask_and_shift_data(target.packed, 3)
             pair3 = (source_pixels3 << 8) + target_pixels3
-            dist3 = source.edit_distances[3][pair3].reshape(pair3.shape)
+            dist3 = source.edit_distances(self.palette)[3][pair3].reshape(
+                pair3.shape)
 
             diff[:, 0::2] = dist1
             diff[:, 1::2] = dist3
@@ -279,12 +286,12 @@ class Video:
         else:
             pair = (old_pixels << 12) + new_pixels
 
-        p = target_pixelmap.edit_distances[byte_offset][pair]
+        p = target_pixelmap.edit_distances(self.palette)[byte_offset][pair]
 
         return p
 
-    @staticmethod
     def _compute_delta(
+            self,
             content: int,
             target: screen.DHGRBitmap,
             old,
@@ -302,7 +309,8 @@ class Video:
 
             # Concatenate 8-bit source and target into 16-bit values
             pair0 = (source_pixels0 << 8) + target_pixels0
-            dist0 = target.edit_distances[0][pair0].reshape(pair0.shape)
+            dist0 = target.edit_distances(self.palette)[0][pair0].reshape(
+                pair0.shape)
 
             # Pixels influenced by byte offset 2
             source_pixels2 = target.mask_and_shift_data(
@@ -310,7 +318,8 @@ class Video:
             target_pixels2 = target.mask_and_shift_data(target.packed, 2)
             # Concatenate 12-bit source and target into 24-bit values
             pair2 = (source_pixels2 << 12) + target_pixels2
-            dist2 = target.edit_distances[2][pair2].reshape(pair2.shape)
+            dist2 = target.edit_distances(self.palette)[2][pair2].reshape(
+                pair2.shape)
 
             diff[:, 0::2] = dist0
             diff[:, 1::2] = dist2
@@ -321,14 +330,16 @@ class Video:
                 target.masked_update(1, target.packed, content), 1)
             target_pixels1 = target.mask_and_shift_data(target.packed, 1)
             pair1 = (source_pixels1 << 12) + target_pixels1
-            dist1 = target.edit_distances[1][pair1].reshape(pair1.shape)
+            dist1 = target.edit_distances(self.palette)[1][pair1].reshape(
+                pair1.shape)
 
             # Pixels influenced by byte offset 3
             source_pixels3 = target.mask_and_shift_data(
                 target.masked_update(3, target.packed, content), 3)
             target_pixels3 = target.mask_and_shift_data(target.packed, 3)
             pair3 = (source_pixels3 << 8) + target_pixels3
-            dist3 = target.edit_distances[3][pair3].reshape(pair3.shape)
+            dist3 = target.edit_distances(self.palette)[3][pair3].reshape(
+                pair3.shape)
 
             diff[:, 0::2] = dist1
             diff[:, 1::2] = dist3

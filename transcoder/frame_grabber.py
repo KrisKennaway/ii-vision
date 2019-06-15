@@ -11,6 +11,7 @@ import skvideo.io
 from PIL import Image
 
 import screen
+from palette import Palette
 from video_mode import VideoMode
 
 
@@ -24,10 +25,11 @@ class FrameGrabber:
 
 
 class FileFrameGrabber(FrameGrabber):
-    def __init__(self, filename, mode: VideoMode):
+    def __init__(self, filename, mode: VideoMode, palette: Palette):
         super(FileFrameGrabber, self).__init__(mode)
 
         self.filename = filename  # type: str
+        self.palette = palette  # type: Palette
         self._reader = skvideo.io.FFmpegReader(filename)
 
         # Compute frame rate from input video
@@ -43,7 +45,11 @@ class FileFrameGrabber(FrameGrabber):
 
     @staticmethod
     def _output_dir(filename) -> str:
+        # TODO: should include palette
         return ".".join(filename.split(".")[:-1])
+
+    def _palette_arg(self) -> str:
+        return "P%d" % self.palette.value
 
     def frames(self) -> Iterator[screen.MemoryMap]:
         """Encode frame to HGR using bmp2dhr.
@@ -69,11 +75,9 @@ class FileFrameGrabber(FrameGrabber):
                 _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
                 _frame.save(bmpfile)
 
-                # TODO: parametrize palette
                 subprocess.call([
                     "/usr/local/bin/bmp2dhr", bmpfile, "hgr",
-                    "P5",
-                    # "P0",  # Kegs32 RGB Color palette(for //gs playback)
+                    self._palette_arg(),
                     "D9"  # Buckels dither
                 ])
 
@@ -96,11 +100,9 @@ class FileFrameGrabber(FrameGrabber):
                 _frame = _frame.resize((280, 192), resample=Image.LANCZOS)
                 _frame.save(bmpfile)
 
-                # TODO: parametrize palette
                 subprocess.call([
                     "/usr/local/bin/bmp2dhr", bmpfile, "dhgr",  # "v",
-                    "P5",  # "P0",  # Kegs32 RGB Color palette (for //gs
-                    # playback)
+                    self._palette_arg(),
                     "A",  # Output separate .BIN and .AUX files
                     "D9"  # Buckels dither
                 ])

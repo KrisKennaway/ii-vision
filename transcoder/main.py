@@ -3,6 +3,7 @@
 import argparse
 
 import movie
+import palette
 import video_mode
 
 parser = argparse.ArgumentParser(
@@ -28,6 +29,10 @@ parser.add_argument(
     '--video_mode', type=str, choices=video_mode.VideoMode.__members__.keys(),
     help='Video display mode to encode for (HGR/DHGR)'
 )
+parser.add_argument(
+    '--palette', type=str, choices=palette.Palette.__members__.keys(),
+    help='Video palette to encode for (default=NTSC)'
+)
 
 
 def main(args):
@@ -37,8 +42,11 @@ def main(args):
         every_n_video_frames=args.every_n_video_frames,
         audio_normalization=args.audio_normalization,
         max_bytes_out=1024. * 1024 * args.max_output_mb,
-        video_mode=video_mode.VideoMode[args.video_mode]
+        video_mode=video_mode.VideoMode[args.video_mode],
+        palette=palette.Palette[args.palette],
     )
+
+    print("Palette %s" % args.palette)
 
     print("Input frame rate = %f" % m.frame_grabber.input_frame_rate)
 
