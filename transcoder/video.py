@@ -363,7 +363,6 @@ class Video:
         candidate_offsets = self._OFFSETS[cond]
         priorities = delta_page[cond]
 
-        # TODO: vectorize this with numpy
         deltas = [
             (priorities[i], random.getrandbits(16), candidate_offsets[i])
             for i in range(len(candidate_offsets))
