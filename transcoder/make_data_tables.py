@@ -1,11 +1,16 @@
 import bz2
 import functools
 import pickle
-from typing import Iterable
+from typing import Dict, List, Iterable, Type
+
+import colormath.color_conversions
+import colormath.color_diff
+import colormath.color_objects
 
 import numpy as np
 import weighted_levenshtein
 
+import colours
 import palette
 
 # The DHGR display encodes 7 pixels across interleaved 4-byte sequences
@@ -65,7 +70,6 @@ import palette
 # contiguously into an array whose index is the (source, target) pair and
 # the value is the edit distance.
 
-
 PIXEL_CHARS = "0123456789ABCDEF"
 
 
@@ -74,14 +78,14 @@ def pixel_char(i: int) -> str:
 
 
 @functools.lru_cache(None)
-def pixel_string(pixels: Iterable[palette.DHGRColours]) -> str:
+def pixel_string(pixels: Iterable[colours.DHGRColours]) -> str:
     return "".join(pixel_char(p.value) for p in pixels)
 
 
 @functools.lru_cache(None)
 def pixels_influenced_by_byte_index(
-        pixels: Iterable[palette.DHGRColours],
-        idx: int) -> Iterable[palette.DHGRColours]:
+        pixels: str,
+        idx: int) -> str:
     """Return subset of pixels that are influenced by given byte index (0..4)"""
     start, end = {
         0: (0, 1),
@@ -91,52 +95,6 @@ def pixels_influenced_by_byte_index(
     }[idx]
 
     return pixels[start:end + 1]
-
-
-# Don't even consider insertions and deletions into the string, they don't
-# make sense for comparing pixel strings
-insert_costs = np.ones(128, dtype=np.float64) * 100000
-delete_costs = np.ones(128, dtype=np.float64) * 100000
-
-# Smallest substitution value is ~20 from palette.diff_matrix, i.e.
-# we always prefer to transpose 2 pixels rather than substituting colours.
-transpose_costs = np.ones((128, 128), dtype=np.float64) * 10
-
-substitute_costs = np.zeros((128, 128), dtype=np.float64)
-
-# Substitution costs to use when evaluating other potential offsets at which
-# to store a content byte.  We penalize more harshly for introducing
-# errors that alter pixel colours, since these tend to be very
-# noticeable as visual noise.
-error_substitute_costs = np.zeros((128, 128), dtype=np.float64)
-
-
-def make_substitute_costs():
-    # Penalty for changing colour
-    for i, c in enumerate(PIXEL_CHARS):
-        for j, d in enumerate(PIXEL_CHARS):
-            cost = palette.diff_matrix[i, j]
-            substitute_costs[(ord(c), ord(d))] = cost  # / 20
-            substitute_costs[(ord(d), ord(c))] = cost  # / 20
-            error_substitute_costs[(ord(c), ord(d))] = 5 * cost  # / 4
-            error_substitute_costs[(ord(d), ord(c))] = 5 * cost  # / 4
-
-
-make_substitute_costs()
-
-
-@functools.lru_cache(None)
-def edit_distance(a, b, error: bool):
-    res = weighted_levenshtein.dam_lev(
-        a, b,
-
-        insert_costs=insert_costs,
-        delete_costs=delete_costs,
-        substitute_costs=error_substitute_costs if error else substitute_costs,
-    )
-
-    assert res == 0 or (1 <= res < 2 ** 16), res
-    return res
 
 
 @functools.lru_cache(None)
@@ -170,7 +128,77 @@ def map_int8_to_mask32_3(int8):
     return int8 << 20
 
 
-def make_edit_distance():
+class EditDistanceParams:
+    # Don't even consider insertions and deletions into the string, they don't
+    # make sense for comparing pixel strings
+    insert_costs = np.ones(128, dtype=np.float64) * 100000
+    delete_costs = np.ones(128, dtype=np.float64) * 100000
+
+    # Smallest substitution value is ~20 from palette.diff_matrices, i.e.
+    # we always prefer to transpose 2 pixels rather than substituting colours.
+    transpose_costs = np.ones((128, 128), dtype=np.float64) * 10
+
+    substitute_costs = np.zeros((128, 128), dtype=np.float64)
+
+    # Substitution costs to use when evaluating other potential offsets at which
+    # to store a content byte.  We penalize more harshly for introducing
+    # errors that alter pixel colours, since these tend to be very
+    # noticeable as visual noise.
+    error_substitute_costs = np.zeros((128, 128), dtype=np.float64)
+
+
+def compute_diff_matrix(pal: Type[palette.BasePalette]):
+    # Compute matrix of CIE2000 delta values for this pal, representing
+    # perceptual distance between colours.
+    dm = np.ndarray(shape=(16, 16), dtype=np.int)
+
+    for colour1, a in pal.RGB.items():
+        alab = colormath.color_conversions.convert_color(
+            a, colormath.color_objects.LabColor)
+        for colour2, b in pal.RGB.items():
+            blab = colormath.color_conversions.convert_color(
+                b, colormath.color_objects.LabColor)
+            dm[colour1.value, colour2.value] = int(
+                colormath.color_diff.delta_e_cie2000(alab, blab))
+    return dm
+
+
+def make_substitute_costs(pal: Type[palette.BasePalette]):
+    edp = EditDistanceParams()
+
+    diff_matrix = compute_diff_matrix(pal)
+
+    # Penalty for changing colour
+    for i, c in enumerate(PIXEL_CHARS):
+        for j, d in enumerate(PIXEL_CHARS):
+            cost = diff_matrix[i, j]
+            edp.substitute_costs[(ord(c), ord(d))] = cost  # / 20
+            edp.substitute_costs[(ord(d), ord(c))] = cost  # / 20
+            edp.error_substitute_costs[(ord(c), ord(d))] = 5 * cost  # / 4
+            edp.error_substitute_costs[(ord(d), ord(c))] = 5 * cost  # / 4
+
+    return edp
+
+
+@functools.lru_cache(None)
+def edit_distance(
+        edp: EditDistanceParams,
+        a: str,
+        b: str,
+        error: bool) -> np.float64:
+    res = weighted_levenshtein.dam_lev(
+        a, b,
+        insert_costs=edp.insert_costs,
+        delete_costs=edp.delete_costs,
+        substitute_costs=(
+            edp.error_substitute_costs if error else edp.substitute_costs),
+    )
+
+    assert res == 0 or (1 <= res < 2 ** 16), res
+    return res
+
+
+def make_edit_distance(edp: EditDistanceParams):
     edit = [
         np.zeros(shape=(2 ** 16), dtype=np.int16),
         np.zeros(shape=(2 ** 24), dtype=np.int16),
@@ -191,8 +219,8 @@ def make_edit_distance():
             second_pixels = pixels_influenced_by_byte_index(
                 pixel_string(int28_to_pixels(second)), 0)
 
-            edit[0][pair] = edit_distance(first_pixels, second_pixels,
-                                          error=False)
+            edit[0][pair] = edit_distance(
+                edp, first_pixels, second_pixels, error=False)
 
             first = map_int8_to_mask32_3(i)
             second = map_int8_to_mask32_3(j)
@@ -202,8 +230,8 @@ def make_edit_distance():
             second_pixels = pixels_influenced_by_byte_index(
                 pixel_string(int28_to_pixels(second)), 3)
 
-            edit[3][pair] = edit_distance(first_pixels, second_pixels,
-                                          error=False)
+            edit[3][pair] = edit_distance(
+                edp, first_pixels, second_pixels, error=False)
 
     for i in range(2 ** 12):
         print(i)
@@ -218,8 +246,8 @@ def make_edit_distance():
             second_pixels = pixels_influenced_by_byte_index(
                 pixel_string(int28_to_pixels(second)), 1)
 
-            edit[1][pair] = edit_distance(first_pixels, second_pixels,
-                                          error=False)
+            edit[1][pair] = edit_distance(
+                edp, first_pixels, second_pixels, error=False)
 
             first = map_int12_to_mask32_2(i)
             second = map_int12_to_mask32_2(j)
@@ -229,22 +257,23 @@ def make_edit_distance():
             second_pixels = pixels_influenced_by_byte_index(
                 pixel_string(int28_to_pixels(second)), 2)
 
-            edit[2][pair] = edit_distance(first_pixels, second_pixels,
-                                          error=False)
+            edit[2][pair] = edit_distance(
+                edp, first_pixels, second_pixels, error=False)
 
     return edit
 
 
 def main():
-    edit = make_edit_distance()
+    for p in palette.PALETTES.values():
+        print("Processing palette %s" % p)
+        edp = make_substitute_costs(p)
+        edit = make_edit_distance(edp)
 
-    # TODO: error distance matrices
-
-    with bz2.open(
-            "transcoder/edit_distance.pickle.bz2", "wb",
-            compresslevel=9) as out:
-        pickle.dump(
-            edit, out, protocol=pickle.HIGHEST_PROTOCOL)
+        # TODO: error distance matrices
+        data = "transcoder/data/palette_%d_edit_distance.pickle" \
+               ".bz2" % p.ID.value
+        with bz2.open(data, "wb", compresslevel=9) as out:
+            pickle.dump(edit, out, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == "__main__":

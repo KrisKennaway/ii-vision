@@ -3,6 +3,7 @@
 import unittest
 
 import frame_grabber
+import palette
 import screen
 import video
 import video_mode
@@ -27,11 +28,13 @@ class TestVideo(unittest.TestCase):
 
         diff = v._diff_weights(v.pixelmap, target_pixelmap, is_aux=True)
 
+        pal = palette.NTSCPalette
+
         # Expect byte 0 to map to 0b00000000 01111111
-        expect0 = target_pixelmap.edit_distances[0][0b0000000001111111]
+        expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0000000001111111]
 
         # Expect byte 2 to map to 0b000000000000 000101010100
-        expect2 = target_pixelmap.edit_distances[2][0b000101010100]
+        expect2 = target_pixelmap.edit_distances(pal.ID)[2][0b000101010100]
 
         self.assertEqual(expect0, diff[0, 0])
         self.assertEqual(expect2, diff[0, 1])
@@ -61,10 +64,11 @@ class TestVideo(unittest.TestCase):
         diff = v._diff_weights(v.pixelmap, target_pixelmap, is_aux=True)
 
         # Expect byte 0 to map to 0b01111111 01101101
-        expect0 = target_pixelmap.edit_distances[0][0b0111111101101101]
+        expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0111111101101101]
 
         # Expect byte 2 to map to 0b000101010100 000011011000
-        expect2 = target_pixelmap.edit_distances[2][0b0000101010100000011011000]
+        expect2 = target_pixelmap.edit_distances(pal.ID)[2][
+            0b0000101010100000011011000]
 
         self.assertEqual(expect0, diff[0, 0])
         self.assertEqual(expect2, diff[0, 1])

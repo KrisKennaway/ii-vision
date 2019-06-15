@@ -7,6 +7,7 @@ import frame_grabber
 import machine
 import opcodes
 import video
+from palette import Palette
 from video_mode import VideoMode
 
 
@@ -17,19 +18,22 @@ class Movie:
             audio_normalization: float = None,
             max_bytes_out: int = None,
             video_mode: VideoMode = VideoMode.HGR,
+            palette: Palette = Palette.NTSC,
     ):
         self.filename = filename  # type: str
         self.every_n_video_frames = every_n_video_frames  # type: int
         self.max_bytes_out = max_bytes_out  # type: int
         self.video_mode = video_mode  # type: VideoMode
+        self.palette = palette  # type: Palette
 
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
 
         self.frame_grabber = frame_grabber.FileFrameGrabber(
-            filename, mode=video_mode)
+            filename, mode=video_mode, palette=self.palette)
         self.video = video.Video(
             self.frame_sequencer, mode=video_mode,
+            palette=self.palette,
             ticks_per_second=self.audio.sample_rate
         )  # type: video.Video
 
