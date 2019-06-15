@@ -173,7 +173,7 @@ class Video:
                     # heap in case we can get back to fixing it exactly
                     # during this frame.  Otherwise we'll get to it later.
                     heapq.heappush(
-                        priorities, (-p, random.randint(0, 10000), page, o))
+                        priorities, (-p, random.getrandbits(16), page, o))
 
                 offsets.append(o)
                 if len(offsets) == 3:
@@ -209,7 +209,7 @@ class Video:
         priorities = [tuple(data) for data in np.stack((
             -update_priority[pages, offsets],
             # Don't use deterministic order for page, offset
-            np.random.randint(0, 10000, size=pages.shape[0]),
+            np.random.randint(0, 2**8, size=pages.shape[0]),
             pages,
             offsets)
         ).T.tolist()]
@@ -365,7 +365,7 @@ class Video:
 
         # TODO: vectorize this with numpy
         deltas = [
-            (priorities[i], random.randint(0, 10000), candidate_offsets[i])
+            (priorities[i], random.getrandbits(16), candidate_offsets[i])
             for i in range(len(candidate_offsets))
         ]
         heapq.heapify(deltas)
