@@ -27,10 +27,12 @@ parser.add_argument(
 )
 parser.add_argument(
     '--video_mode', type=str, choices=video_mode.VideoMode.__members__.keys(),
+    default=video_mode.VideoMode.DHGR.name,
     help='Video display mode to encode for (HGR/DHGR)'
 )
 parser.add_argument(
     '--palette', type=str, choices=palette.Palette.__members__.keys(),
+    default=palette.Palette.NTSC.name,
     help='Video palette to encode for (default=NTSC)'
 )
 
