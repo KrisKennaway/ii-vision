@@ -30,13 +30,9 @@ class Movie:
 
         self.stream_pos = 0  # type: int
 
-        # TODO: don't use this as well as cycle_counter, it's a relic of when
-        # I relied on variable-duration opcodes for frame timings.
         self.ticks = 0  # type: int
-        self.cycle_counter = machine.CycleCounter()
 
         self.state = machine.Machine(
-            self.cycle_counter,
             self.video.memory_map,
             self.video.update_priority
         )
