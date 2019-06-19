@@ -53,7 +53,11 @@ class Movie:
         for au in self.audio.audio_stream():
             self.ticks += 1
             if self.video.tick(self.ticks):
-                main, aux = next(video_frames)
+                try:
+                    main, aux = next(video_frames)
+                except StopIteration:
+                    break
+
                 if ((self.video.frame_number - 1) % self.every_n_video_frames
                         == 0):
                     print("Starting frame %d" % self.video.frame_number)
