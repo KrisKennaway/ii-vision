@@ -51,8 +51,8 @@ class Video:
         if self.mode == mode.DHGR:
             self.aux_update_priority = np.zeros((32, 256), dtype=np.int)
 
-    def tick(self, cycles: int) -> bool:
-        if cycles > (self.cycles_per_frame * self.frame_number):
+    def tick(self, ticks: int) -> bool:
+        if ticks >= (self.ticks_per_frame * self.frame_number):
             self.frame_number += 1
             return True
         return False
