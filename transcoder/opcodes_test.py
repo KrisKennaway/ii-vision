@@ -15,11 +15,11 @@ class TestOpcodes(unittest.TestCase):
         op2 = opcodes.Nop()
         self.assertEqual(op1, op2)
 
-        op1 = opcodes.Ack()
-        op2 = opcodes.Ack()
+        op1 = opcodes.Ack(aux_active=False)
+        op2 = opcodes.Ack(aux_active=False)
         self.assertEqual(op1, op2)
 
-        op1 = opcodes.Ack()
+        op1 = opcodes.Ack(aux_active=False)
         op2 = opcodes.Nop()
         self.assertNotEqual(op1, op2)
 
