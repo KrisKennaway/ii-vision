@@ -23,17 +23,16 @@ class Movie:
 
         self.audio = audio.Audio(
             filename, normalization=audio_normalization)  # type: audio.Audio
-        self.video = video.Video(filename, mode=video_mode)  # type: video.Video
+        self.video = video.Video(
+            filename, mode=video_mode,
+            ticks_per_second=self.audio.sample_rate
+        )  # type: video.Video
 
         self.stream_pos = 0  # type: int
 
-        # TODO: don't use this as well as cycle_counter, it's a relic of when
-        # I relied on variable-duration opcodes for frame timings.
-        self.cycles = 0  # type: int
-        self.cycle_counter = machine.CycleCounter()
+        self.ticks = 0  # type: int
 
         self.state = machine.Machine(
-            self.cycle_counter,
             self.video.memory_map,
             self.video.update_priority
         )
@@ -52,9 +51,13 @@ class Movie:
         yield opcodes.Header(mode=self.video_mode)
 
         for au in self.audio.audio_stream():
-            self.cycles += self.audio.cycles_per_tick
-            if self.video.tick(self.cycles):
-                main, aux = next(video_frames)
+            self.ticks += 1
+            if self.video.tick(self.ticks):
+                try:
+                    main, aux = next(video_frames)
+                except StopIteration:
+                    break
+
                 if ((self.video.frame_number - 1) % self.every_n_video_frames
                         == 0):
                     print("Starting frame %d" % self.video.frame_number)
