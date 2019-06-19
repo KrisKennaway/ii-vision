@@ -12,7 +12,7 @@ import video_mode
 class TestVideo(unittest.TestCase):
     def test_diff_weights(self):
         fs = frame_grabber.FrameGrabber(mode=video_mode.VideoMode.DHGR)
-        v = video.Video(fs, mode=video_mode.VideoMode.DHGR)
+        v = video.Video(fs, ticks_per_second=10000, mode=video_mode.VideoMode.DHGR)
 
         frame = screen.MemoryMap(screen_page=1)
         frame.page_offset[0, 0] = 0b1111111

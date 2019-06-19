@@ -22,15 +22,15 @@ class Video:
     def __init__(
             self,
             frame_grabber: FrameGrabber,
-            mode: VideoMode = VideoMode.HGR,
-            palette: Palette = Palette.NTSC,
             ticks_per_second: int,
+            mode: VideoMode = VideoMode.HGR,
+            palette: Palette = Palette.NTSC
     ):
         self.mode = mode  # type: VideoMode
         self.frame_grabber = frame_grabber  # type: FrameGrabber
         self.ticks_per_second = float(ticks_per_second)  # type: float
         self.ticks_per_frame = (
-            self.ticks_per_second / self.input_frame_rate)  # type: float
+            self.ticks_per_second / frame_grabber.input_frame_rate)  # type: float
         self.frame_number = 0  # type: int
         self.palette = palette  # type: Palette
 

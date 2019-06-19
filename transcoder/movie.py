@@ -32,9 +32,10 @@ class Movie:
         self.frame_grabber = frame_grabber.FileFrameGrabber(
             filename, mode=video_mode, palette=self.palette)
         self.video = video.Video(
-            self.frame_sequencer, mode=video_mode,
-            palette=self.palette,
-            ticks_per_second=self.audio.sample_rate
+            self.frame_sequencer,
+            ticks_per_second=self.audio.sample_rate,
+            mode=video_mode,
+            palette=self.palette
         )  # type: video.Video
 
         self.stream_pos = 0  # type: int
