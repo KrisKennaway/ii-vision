@@ -15,11 +15,14 @@ class Audio:
         # TODO: take into account that the available range is slightly offset
         # as fraction of total cycle count?
         self._tick_range = [4, 66]
-        self.cycles_per_tick = 73  # type: int
 
-        # TODO: round to divisor of video frame rate
-        self.sample_rate = 14340  # int(1024. * 1024 /
-        # self.cycles_per_tick)
+        # At 73 cycles/tick, true audio playback sample rate is
+        # roughly 1024*1024/73 = 14364 Hz (ignoring ACK slow path).
+        # Typical audio encoding is 44100Hz which is close to 14700*3
+        # Downscaling by 3x gives better results than trying to resample
+        # to a non-divisor.  So we cheat a bit and play back the video a tiny
+        # bit (<2%) faster.
+        self.sample_rate = 14700.  # type: float
 
         self.normalization = (
                 normalization or self._normalization())  # type: float
