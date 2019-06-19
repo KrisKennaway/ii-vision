@@ -32,10 +32,12 @@ class Video:
     def __init__(
             self,
             filename: str,
-            mode: Mode = Mode.HGR
+            ticks_per_second: float,
+            mode: Mode = Mode.HGR,
     ):
         self.filename = filename  # type: str
         self.mode = mode  # type: Mode
+        self.ticks_per_second = ticks_per_second  # type: float
 
         self._reader = skvideo.io.FFmpegReader(filename)
 
@@ -46,8 +48,8 @@ class Video:
         self.input_frame_rate = float(
             rate_data[0]) / float(rate_data[1])  # type: float
 
-        self.cycles_per_frame = (
-                self.CLOCK_SPEED / self.input_frame_rate)  # type: float
+        self.ticks_per_frame = (
+            self.ticks_per_second / self.input_frame_rate)  # type: float
         self.frame_number = 0  # type: int
 
         # Initialize empty screen
@@ -62,8 +64,8 @@ class Video:
         if self.mode == mode.DHGR:
             self.aux_update_priority = np.zeros((32, 256), dtype=np.int64)
 
-    def tick(self, cycles: int) -> bool:
-        if cycles > (self.cycles_per_frame * self.frame_number):
+    def tick(self, ticks: int) -> bool:
+        if ticks >= (self.ticks_per_frame * self.frame_number):
             self.frame_number += 1
             return True
         return False
