@@ -44,9 +44,11 @@ class FileFrameGrabber(FrameGrabber):
             yield Image.fromarray(frame_array)
 
     @staticmethod
-    def _output_dir(filename) -> str:
-        # TODO: should include palette
-        return ".".join(filename.split(".")[:-1])
+    def _output_dir(filename, video_mode, palette) -> str:
+        return "%s/%s/%s" % (
+            ".".join(filename.split(".")[:-1]),
+            video_mode.name,
+            palette.name)
 
     def _palette_arg(self) -> str:
         return "P%d" % self.palette.value
@@ -57,11 +59,9 @@ class FileFrameGrabber(FrameGrabber):
         We do the encoding in a background thread to parallelize.
         """
 
-        frame_dir = self._output_dir(self.filename)
-        try:
-            os.mkdir(frame_dir)
-        except FileExistsError:
-            pass
+        frame_dir = self._output_dir(
+            self.filename, self.video_mode, self.palette)
+        os.makedirs(frame_dir, exist_ok=True)
 
         q = queue.Queue(maxsize=10)
 
