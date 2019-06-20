@@ -58,6 +58,7 @@ zpdummy = $08
 dummy = $ffff
 
 ptr = $06  ; TODO: we only use this for connection retry count
+HGRZP = $E6  ; ZP location used by HGR internals to track page to clear
 
 ; soft-switches
 KBD         = $C000
@@ -74,7 +75,7 @@ DHIRESON    = $C05E
 
 ; MONITOR SUBROUTINES
 HGR         = $F3E2
-HGR0        = $F3EA ; internal entry point within HGR that doesn't set soft-switches
+HGR0        = $F3F2 ; internal entry point within HGR that doesn't set soft-switches
 COUT        = $FDED
 PRBYTE      = $FDDA
 PRNTAX      = $F941
@@ -311,30 +312,35 @@ op_header:
 ; Initialize (D)HGR in the CODE segment so we don't accidentally toast ourselves when
 ; erasing HGR
 _op_header_hgr:
+    ; Co-opt HGR internals to clear screen without displaying it.
+    ; nukes the startup code we placed in HGR segment
+    STA HIRESON
+    STA FULLSCR
+
+    LDA #$20
+    STA HGRZP  ; ZP location used by HGR to track page to clear
+    JSR HGR0
+
     LDA WDATA ; Video mode
     BEQ @1 ; 0 = HGR mode
 
-    ; TODO: clear screen before displaying it to look cleaner
-    
     ; DHGR mode
 
-    STA TEXTOFF
-    STA HIRESON
-    STA DHIRESON
-    STA COL80ON
     STA STORE80ON
 
     ; Clear aux screen
     STA PAGE2ON ; AUX memory active
     ; Co-opt HGR internals to clear AUX for us.
     LDA #$20
+    STA HGRZP
     JSR HGR0
-
     STA PAGE2OFF ; MAIN memory active
 
+    STA TEXTOFF ; now display empty (D)HGR screen.  Doing this before the next instruction to make sure we don't see 80-column text garbage momentarily.
+    STA COL80ON
+    STA DHIRESON
 @1:
-    JSR HGR ; nukes the startup code we placed in HGR segment
-    STA FULLSCR
+    STA TEXTOFF ; now display empty HGR screen (NOP for DHGR since we've already done it)
 
     ; establish invariants expected by decode loop
     LDY #>RXBASE ; High byte of socket 0 receive buffer
@@ -1278,6 +1284,7 @@ op_terminate:
     LDA KBD
     BPL @0
 @1: ; key pressed
+    LDA KBDSTRB ; clear strobe
     JMP exit
 
 ; Manage W5100 socket buffer and ACK TCP stream.
