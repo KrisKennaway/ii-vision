@@ -116,12 +116,13 @@ class FileFrameGrabber(FrameGrabber):
 
         def worker():
             """Invoke bmp2dhr to encode input image frames and push to queue."""
+
+            decode = (
+                _dhgr_decode if self.video_mode == VideoMode.DHGR else
+                _hgr_decode
+            )
             for _idx, _frame in enumerate(self._frame_grabber()):
-                if self.video_mode == VideoMode.DHGR:
-                    res = _dhgr_decode(_idx, _frame)
-                else:
-                    res = _hgr_decode(_idx, _frame)
-                q.put(res)
+                q.put(decode(_idx, _frame))
 
             q.put((None, None))
 

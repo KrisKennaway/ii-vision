@@ -1,12 +1,11 @@
 import bz2
 import functools
 import pickle
-from typing import Dict, List, Iterable, Type
+from typing import Iterable, Type
 
 import colormath.color_conversions
 import colormath.color_diff
 import colormath.color_objects
-
 import numpy as np
 import weighted_levenshtein
 

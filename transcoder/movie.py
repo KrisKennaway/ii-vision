@@ -38,15 +38,16 @@ class Movie:
             palette=self.palette
         )  # type: video.Video
 
+        # Byte offset within TCP stream
         self.stream_pos = 0  # type: int
 
+        # Current audio tick opcode count within movie stream.
         self.ticks = 0  # type: int
 
-        self.state = machine.Machine(
-            self.video.memory_map,
-            self.video.update_priority
-        )
+        # Tracks internal state of player virtual machine
+        self.state = machine.Machine()
 
+        # Currently operating on AUX memory bank?
         self.aux_memory_bank = False
 
     def encode(self) -> Iterator[opcodes.Opcode]:
