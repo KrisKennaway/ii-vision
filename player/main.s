@@ -33,8 +33,8 @@
 .segment "HGR"
 
 ; TODO: make these configurable
-SRCADDR:  .byte   192,168,1,147              ; 192.168.1.147  W5100 IP
-FADDR:    .byte   192,168,1,15               ; 192.168.1.15   FOREIGN IP
+SRCADDR:  .byte   10,0,65,02                 ; 10.0.65.02     W5100 IP
+FADDR:    .byte   10,0,0,1                   ; 10.0.0.1       FOREIGN IP
 FPORT:    .byte   $07,$b9                    ; 1977           FOREIGN PORT
 MAC:      .byte   $00,$08,$DC,$01,$02,$03    ; W5100 MAC ADDRESS
 
