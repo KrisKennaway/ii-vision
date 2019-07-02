@@ -21,6 +21,7 @@ class TestVideo(unittest.TestCase):
         frame.page_offset[0, 1] = 0b1010101
 
         target_pixelmap = screen.DHGRBitmap(
+            palette = palette.Palette.NTSC,
             main_memory=v.memory_map,
             aux_memory=frame
         )
@@ -28,9 +29,9 @@ class TestVideo(unittest.TestCase):
             0b0000000101010100000001111111,
             target_pixelmap.packed[0, 0])
 
-        diff = v._diff_weights(v.pixelmap, target_pixelmap, is_aux=True)
-
         pal = palette.NTSCPalette
+
+        diff = target_pixelmap.diff_weights(v.pixelmap, is_aux=True)
 
         # Expect byte 0 to map to 0b00000000 01111111
         expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0000000001111111]
@@ -63,7 +64,7 @@ class TestVideo(unittest.TestCase):
             target_pixelmap.packed[0, 0]
         )
 
-        diff = v._diff_weights(v.pixelmap, target_pixelmap, is_aux=True)
+        diff = target_pixelmap.diff_weights(v.pixelmap, is_aux=True)
 
         # Expect byte 0 to map to 0b01111111 01101101
         expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0111111101101101]

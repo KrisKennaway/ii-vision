@@ -1,6 +1,8 @@
 import bz2
 import functools
 import pickle
+import time
+import datetime
 from typing import Iterable, Type
 
 import colormath.color_conversions
@@ -77,54 +79,8 @@ def pixel_char(i: int) -> str:
 
 
 @functools.lru_cache(None)
-def pixel_string(pixels: Iterable[colours.DHGRColours]) -> str:
-    return "".join(pixel_char(p.value) for p in pixels)
-
-
-@functools.lru_cache(None)
-def pixels_influenced_by_byte_index(
-        pixels: str,
-        idx: int) -> str:
-    """Return subset of pixels that are influenced by given byte index (0..4)"""
-    start, end = {
-        0: (0, 1),
-        1: (1, 3),
-        2: (3, 5),
-        3: (5, 6)
-    }[idx]
-
-    return pixels[start:end + 1]
-
-
-@functools.lru_cache(None)
-def int28_to_pixels(int28):
-    return tuple(
-        palette.DHGRColours(
-            (int28 & (0b1111 << (4 * i))) >> (4 * i)) for i in range(7)
-    )
-
-
-# TODO: these duplicates byte_mask32/byte_shift from DHGRBitmap
-
-# Map n-bit int into 32-bit masked value
-def map_int8_to_mask32_0(int8):
-    assert 0 <= int8 < 2 ** 8, int8
-    return int8
-
-
-def map_int12_to_mask32_1(int12):
-    assert 0 <= int12 < 2 ** 12, int12
-    return int12 << 4
-
-
-def map_int12_to_mask32_2(int12):
-    assert 0 <= int12 < 2 ** 12, int12
-    return int12 << 12
-
-
-def map_int8_to_mask32_3(int8):
-    assert 0 <= int8 < 2 ** 8, int8
-    return int8 << 20
+def pixel_string(pixels: Iterable[int]) -> str:
+    return "".join(pixel_char(p) for p in pixels)
 
 
 class EditDistanceParams:
@@ -179,7 +135,6 @@ def make_substitute_costs(pal: Type[palette.BasePalette]):
     return edp
 
 
-@functools.lru_cache(None)
 def edit_distance(
         edp: EditDistanceParams,
         a: str,
@@ -199,66 +154,70 @@ def edit_distance(
 
 def make_edit_distance(edp: EditDistanceParams):
     edit = [
-        np.zeros(shape=(2 ** 16), dtype=np.int16),
-        np.zeros(shape=(2 ** 24), dtype=np.int16),
-        np.zeros(shape=(2 ** 24), dtype=np.int16),
-        np.zeros(shape=(2 ** 16), dtype=np.int16),
+        np.zeros(shape=(2 ** 26), dtype=np.uint16),
+        np.zeros(shape=(2 ** 26), dtype=np.uint16),
+        np.zeros(shape=(2 ** 26), dtype=np.uint16),
+        np.zeros(shape=(2 ** 26), dtype=np.uint16),
     ]
 
-    for i in range(2 ** 8):
-        print(i)
-        for j in range(2 ** 8):
-            pair = (i << 8) + j
+    start_time = time.time()
 
-            first = map_int8_to_mask32_0(i)
-            second = map_int8_to_mask32_0(j)
+    for i in range(2 ** 13):
+        if i > 1:
+            now = time.time()
+            eta = datetime.timedelta(
+                seconds=(now - start_time) * (2 ** 13 / i))
+            print("%.2f%% (ETA %s)" % (100 * i / (2 ** 13), eta))
+        for j in range(2 ** 13):
+            pair = (i << 13) + j
 
-            first_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(first)), 0)
-            second_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(second)), 0)
+            # Each DHGR byte offset has the same range of int13 possible
+            # values and nominal colour pixels, but with different initial
+            # phases:
+            # AUX 0: 0 (1 at start of 3-bit header)
+            # MAIN 0: 3 (0)
+            # AUX 1: 2 (3)
+            # MAIN 1: 1 (2)
 
+            first_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    i, colours.DHGRColours, init_phase=1)
+            )
+            second_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    j, colours.DHGRColours, init_phase=1))
             edit[0][pair] = edit_distance(
                 edp, first_pixels, second_pixels, error=False)
 
-            first = map_int8_to_mask32_3(i)
-            second = map_int8_to_mask32_3(j)
-
-            first_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(first)), 3)
-            second_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(second)), 3)
-
-            edit[3][pair] = edit_distance(
-                edp, first_pixels, second_pixels, error=False)
-
-    for i in range(2 ** 12):
-        print(i)
-        for j in range(2 ** 12):
-            pair = (i << 12) + j
-
-            first = map_int12_to_mask32_1(i)
-            second = map_int12_to_mask32_1(j)
-
-            first_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(first)), 1)
-            second_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(second)), 1)
-
+            first_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    i, colours.DHGRColours, init_phase=0)
+            )
+            second_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    j, colours.DHGRColours, init_phase=0))
             edit[1][pair] = edit_distance(
                 edp, first_pixels, second_pixels, error=False)
 
-            first = map_int12_to_mask32_2(i)
-            second = map_int12_to_mask32_2(j)
-
-            first_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(first)), 2)
-            second_pixels = pixels_influenced_by_byte_index(
-                pixel_string(int28_to_pixels(second)), 2)
-
+            first_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    i, colours.DHGRColours, init_phase=3)
+            )
+            second_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    j, colours.DHGRColours, init_phase=3))
             edit[2][pair] = edit_distance(
                 edp, first_pixels, second_pixels, error=False)
 
+            first_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    i, colours.DHGRColours, init_phase=2)
+            )
+            second_pixels = pixel_string(
+                colours.int34_to_nominal_colour_pixel_values(
+                    j, colours.DHGRColours, init_phase=2))
+            edit[3][pair] = edit_distance(
+                edp, first_pixels, second_pixels, error=False)
     return edit
 
 
@@ -269,7 +228,7 @@ def main():
         edit = make_edit_distance(edp)
 
         # TODO: error distance matrices
-        data = "transcoder/data/palette_%d_edit_distance.pickle" \
+        data = "transcoder/data/DHGR_palette_%d_edit_distance.pickle" \
                ".bz2" % p.ID.value
         with bz2.open(data, "wb", compresslevel=9) as out:
             pickle.dump(edit, out, protocol=pickle.HIGHEST_PROTOCOL)

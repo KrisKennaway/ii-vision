@@ -1,12 +1,12 @@
 import unittest
 
-from colours import DHGRColours
+from colours import HGRColours
 import make_data_tables
 
 
 class TestMakeDataTables(unittest.TestCase):
     def test_pixel_string(self):
-        pixels = (DHGRColours.BLACK, DHGRColours.WHITE, DHGRColours.ORANGE)
+        pixels = (HGRColours.BLACK, HGRColours.WHITE, HGRColours.ORANGE)
         self.assertEqual("0FC", make_data_tables.pixel_string(pixels))
 
     def test_pixels_influenced_by_byte_index(self):
@@ -20,39 +20,6 @@ class TestMakeDataTables(unittest.TestCase):
         self.assertEqual(
             "BA9",
             make_data_tables.pixels_influenced_by_byte_index(pixels, 1)
-        )
-
-    def test_int28_to_pixels(self):
-        self.assertEqual(
-            (
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-                DHGRColours.YELLOW,
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-            ),
-            tuple(
-                make_data_tables.int28_to_pixels(
-                    0b00000000000000000000111000000000)
-            )
-        )
-
-        self.assertEqual(
-            (
-                DHGRColours.BLACK,
-                DHGRColours.WHITE,
-                DHGRColours.BLACK,
-                DHGRColours.WHITE,
-                DHGRColours.BLACK,
-                DHGRColours.WHITE,
-                DHGRColours.BLACK,
-            ),
-            tuple(
-                make_data_tables.int28_to_pixels(
-                    0b0000111100001111000011110000)
-            )
         )
 
     def test_map_to_mask32(self):

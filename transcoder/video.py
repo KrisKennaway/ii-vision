@@ -1,6 +1,5 @@
 """Encode a sequence of images as an optimized stream of screen changes."""
 
-import functools
 import heapq
 import random
 from typing import List, Iterator, Tuple
@@ -30,7 +29,7 @@ class Video:
         self.frame_grabber = frame_grabber  # type: FrameGrabber
         self.ticks_per_second = ticks_per_second  # type: float
         self.ticks_per_frame = (
-            self.ticks_per_second / frame_grabber.input_frame_rate
+                self.ticks_per_second / frame_grabber.input_frame_rate
         )  # type: float
         self.frame_number = 0  # type: int
         self.palette = palette  # type: Palette
@@ -43,6 +42,7 @@ class Video:
                 screen_page=1)  # type: screen.MemoryMap
 
         self.pixelmap = screen.DHGRBitmap(
+            palette=palette,
             main_memory=self.memory_map,
             aux_memory=self.aux_memory_map
         )
@@ -71,6 +71,10 @@ class Video:
             memory_map = self.memory_map
             update_priority = self.update_priority
 
+        # Make sure nothing is leaking into screen holes
+        assert np.count_nonzero(
+            memory_map.page_offset[screen.SCREEN_HOLES]) == 0
+
         print("Similarity %f" % (update_priority.mean()))
 
         yield from self._index_changes(
@@ -88,22 +92,27 @@ class Video:
         if is_aux:
             target_pixelmap = screen.DHGRBitmap(
                 main_memory=self.memory_map,
-                aux_memory=target
+                aux_memory=target,
+                palette=self.palette
             )
         else:
             target_pixelmap = screen.DHGRBitmap(
                 main_memory=target,
-                aux_memory=self.aux_memory_map
+                aux_memory=self.aux_memory_map,
+                palette=self.palette
             )
 
-        diff_weights = self._diff_weights(
-            self.pixelmap, target_pixelmap, is_aux
-        )
+        diff_weights = target_pixelmap.diff_weights(self.pixelmap, is_aux)
+
+        # Don't bother storing into screen holes
+        diff_weights[screen.SCREEN_HOLES] = 0
 
         # Clear any update priority entries that have resolved themselves
         # with new frame
         update_priority[diff_weights == 0] = 0
         update_priority += diff_weights
+
+        assert np.count_nonzero(update_priority[screen.SCREEN_HOLES]) == 0
 
         priorities = self._heapify_priorities(update_priority)
 
@@ -112,6 +121,10 @@ class Video:
         while priorities:
             pri, _, page, offset = heapq.heappop(priorities)
 
+            assert not screen.SCREEN_HOLES[page, offset], (
+                "Attempted to store into screen hole at (%d, %d)" % (
+                page, offset))
+
             # Check whether we've already cleared this diff while processing
             # an earlier opcode
             if update_priority[page, offset] == 0:
@@ -119,7 +132,9 @@ class Video:
 
             offsets = [offset]
             content = target.page_offset[page, offset]
-            assert content < 0x80  # DHGR palette bit not expected to be set
+            if self.mode == VideoMode.DHGR:
+                # DHGR palette bit not expected to be set
+                assert content < 0x80
 
             # Clear priority for the offset we're emitting
             update_priority[page, offset] = 0
@@ -147,6 +162,10 @@ class Video:
             ):
                 assert o != offset
 
+                assert not screen.SCREEN_HOLES[page, o], (
+                        "Attempted to store into screen hole at (%d, %d)" % (
+                    page, o))
+
                 if update_priority[page, o] == 0:
                     # print("Skipping page=%d, offset=%d" % (page, o))
                     continue
@@ -161,8 +180,8 @@ class Video:
                 byte_offset = target_pixelmap.interleaved_byte_offset(o, is_aux)
                 old_packed = target_pixelmap.packed[page, o // 2]
 
-                p = self._byte_pair_difference(
-                    target_pixelmap, byte_offset, old_packed, content)
+                p = target_pixelmap.byte_pair_difference(
+                    byte_offset, old_packed, content)
 
                 # Update priority for the offset we're emitting
                 update_priority[page, o] = p  # 0
@@ -211,143 +230,13 @@ class Video:
         priorities = [tuple(data) for data in np.stack((
             -update_priority[pages, offsets],
             # Don't use deterministic order for page, offset
-            np.random.randint(0, 2**8, size=pages.shape[0]),
+            np.random.randint(0, 2 ** 8, size=pages.shape[0]),
             pages,
             offsets)
         ).T.tolist()]
 
         heapq.heapify(priorities)
         return priorities
-
-    def _diff_weights(
-            self,
-            source: screen.DHGRBitmap,
-            target: screen.DHGRBitmap,
-            is_aux: bool
-    ):
-        diff = np.ndarray((32, 256), dtype=np.int)
-
-        if is_aux:
-            # Pixels influenced by byte offset 0
-            source_pixels0 = source.mask_and_shift_data(source.packed, 0)
-            target_pixels0 = target.mask_and_shift_data(target.packed, 0)
-
-            # Concatenate 8-bit source and target into 16-bit values
-            pair0 = (source_pixels0 << 8) + target_pixels0
-            dist0 = source.edit_distances(self.palette)[0][pair0].reshape(
-                pair0.shape)
-
-            # Pixels influenced by byte offset 2
-            source_pixels2 = source.mask_and_shift_data(source.packed, 2)
-            target_pixels2 = target.mask_and_shift_data(target.packed, 2)
-            # Concatenate 12-bit source and target into 24-bit values
-            pair2 = (source_pixels2 << 12) + target_pixels2
-            dist2 = source.edit_distances(self.palette)[2][pair2].reshape(
-                pair2.shape)
-
-            diff[:, 0::2] = dist0
-            diff[:, 1::2] = dist2
-
-        else:
-            # Pixels influenced by byte offset 1
-            source_pixels1 = source.mask_and_shift_data(source.packed, 1)
-            target_pixels1 = target.mask_and_shift_data(target.packed, 1)
-            pair1 = (source_pixels1 << 12) + target_pixels1
-            dist1 = source.edit_distances(self.palette)[1][pair1].reshape(
-                pair1.shape)
-
-            # Pixels influenced by byte offset 3
-            source_pixels3 = source.mask_and_shift_data(source.packed, 3)
-            target_pixels3 = target.mask_and_shift_data(target.packed, 3)
-            pair3 = (source_pixels3 << 8) + target_pixels3
-            dist3 = source.edit_distances(self.palette)[3][pair3].reshape(
-                pair3.shape)
-
-            diff[:, 0::2] = dist1
-            diff[:, 1::2] = dist3
-
-        return diff
-
-    @functools.lru_cache(None)
-    def _byte_pair_difference(
-            self,
-            target_pixelmap,
-            byte_offset,
-            old_packed,
-            content
-    ):
-
-        old_pixels = target_pixelmap.mask_and_shift_data(
-            old_packed, byte_offset)
-        new_pixels = target_pixelmap.mask_and_shift_data(
-            target_pixelmap.masked_update(
-                byte_offset, old_packed, content), byte_offset)
-
-        if byte_offset == 0 or byte_offset == 3:
-            pair = (old_pixels << 8) + new_pixels
-        else:
-            pair = (old_pixels << 12) + new_pixels
-
-        p = target_pixelmap.edit_distances(self.palette)[byte_offset][pair]
-
-        return p
-
-    def _compute_delta(
-            self,
-            content: int,
-            target: screen.DHGRBitmap,
-            old,
-            is_aux: bool
-    ):
-        diff = np.ndarray((32, 256), dtype=np.int)
-
-        # TODO: use error edit distance
-
-        if is_aux:
-            # Pixels influenced by byte offset 0
-            source_pixels0 = target.mask_and_shift_data(
-                target.masked_update(0, target.packed, content), 0)
-            target_pixels0 = target.mask_and_shift_data(target.packed, 0)
-
-            # Concatenate 8-bit source and target into 16-bit values
-            pair0 = (source_pixels0 << 8) + target_pixels0
-            dist0 = target.edit_distances(self.palette)[0][pair0].reshape(
-                pair0.shape)
-
-            # Pixels influenced by byte offset 2
-            source_pixels2 = target.mask_and_shift_data(
-                target.masked_update(2, target.packed, content), 2)
-            target_pixels2 = target.mask_and_shift_data(target.packed, 2)
-            # Concatenate 12-bit source and target into 24-bit values
-            pair2 = (source_pixels2 << 12) + target_pixels2
-            dist2 = target.edit_distances(self.palette)[2][pair2].reshape(
-                pair2.shape)
-
-            diff[:, 0::2] = dist0
-            diff[:, 1::2] = dist2
-
-        else:
-            # Pixels influenced by byte offset 1
-            source_pixels1 = target.mask_and_shift_data(
-                target.masked_update(1, target.packed, content), 1)
-            target_pixels1 = target.mask_and_shift_data(target.packed, 1)
-            pair1 = (source_pixels1 << 12) + target_pixels1
-            dist1 = target.edit_distances(self.palette)[1][pair1].reshape(
-                pair1.shape)
-
-            # Pixels influenced by byte offset 3
-            source_pixels3 = target.mask_and_shift_data(
-                target.masked_update(3, target.packed, content), 3)
-            target_pixels3 = target.mask_and_shift_data(target.packed, 3)
-            pair3 = (source_pixels3 << 8) + target_pixels3
-            dist3 = target.edit_distances(self.palette)[3][pair3].reshape(
-                pair3.shape)
-
-            diff[:, 0::2] = dist1
-            diff[:, 1::2] = dist3
-
-        # TODO: try different weightings
-        return (diff * 5) - old
 
     _OFFSETS = np.arange(256)
 
@@ -356,8 +245,8 @@ class Video:
         # TODO: move this up into parent
         delta_screen = content_deltas.get(content)
         if delta_screen is None:
-            delta_screen = self._compute_delta(
-                content, target_pixelmap, old_error, is_aux)
+            delta_screen = target_pixelmap.compute_delta(
+                content, old_error, is_aux)
             content_deltas[content] = delta_screen
 
         delta_page = delta_screen[page]
@@ -374,6 +263,6 @@ class Video:
         while deltas:
             pri, _, o = heapq.heappop(deltas)
             assert pri < 0
-            assert o < 255
+            assert o <= 255
 
             yield -pri, o
