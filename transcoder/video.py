@@ -122,7 +122,7 @@ class Video:
             pri, _, page, offset = heapq.heappop(priorities)
 
             assert not screen.SCREEN_HOLES[page, offset], (
-                "Attempted to store into screen hole at (%d, %d)" % (
+                    "Attempted to store into screen hole at (%d, %d)" % (
                 page, offset))
 
             # Check whether we've already cleared this diff while processing
@@ -177,7 +177,7 @@ class Video:
                 for cd in content_deltas.values():
                     cd[page, o] = 0
 
-                byte_offset = target_pixelmap.interleaved_byte_offset(o, is_aux)
+                byte_offset = target_pixelmap.byte_offset(o, is_aux)
                 old_packed = target_pixelmap.packed[page, o // 2]
 
                 p = target_pixelmap.byte_pair_difference(

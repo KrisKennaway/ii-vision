@@ -21,23 +21,23 @@ class TestVideo(unittest.TestCase):
         frame.page_offset[0, 1] = 0b1010101
 
         target_pixelmap = screen.DHGRBitmap(
-            palette = palette.Palette.NTSC,
+            palette=palette.Palette.NTSC,
             main_memory=v.memory_map,
             aux_memory=frame
         )
         self.assertEqual(
-            0b0000000101010100000001111111,
+            0b0000000000101010100000001111111000,
             target_pixelmap.packed[0, 0])
 
         pal = palette.NTSCPalette
 
         diff = target_pixelmap.diff_weights(v.pixelmap, is_aux=True)
 
-        # Expect byte 0 to map to 0b00000000 01111111
-        expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0000000001111111]
+        # Expect byte 0 to map to 0b0001111111000
+        expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0001111111000]
 
-        # Expect byte 2 to map to 0b000000000000 000101010100
-        expect2 = target_pixelmap.edit_distances(pal.ID)[2][0b000101010100]
+        # Expect byte 2 to map to 0b0001010101000
+        expect2 = target_pixelmap.edit_distances(pal.ID)[2][0b0001010101000]
 
         self.assertEqual(expect0, diff[0, 0])
         self.assertEqual(expect2, diff[0, 1])
@@ -46,7 +46,7 @@ class TestVideo(unittest.TestCase):
         v.aux_memory_map.page_offset = frame.page_offset
         v.pixelmap._pack()
         self.assertEqual(
-            0b0000000101010100000001111111,
+            0b0000000000101010100000001111111000,
             v.pixelmap.packed[0, 0]
         )
 
@@ -57,21 +57,23 @@ class TestVideo(unittest.TestCase):
 
         target_pixelmap = screen.DHGRBitmap(
             main_memory=v.memory_map,
-            aux_memory=frame
+            aux_memory=frame,
+            palette=pal.ID
         )
         self.assertEqual(
-            0b0000000011011000000001101101,
+            0b0000000000011011000000001101101000,
             target_pixelmap.packed[0, 0]
         )
 
         diff = target_pixelmap.diff_weights(v.pixelmap, is_aux=True)
 
-        # Expect byte 0 to map to 0b01111111 01101101
-        expect0 = target_pixelmap.edit_distances(pal.ID)[0][0b0111111101101101]
+        # Expect byte 0 to map to 0b01111111 01101101 XXX
+        expect0 = target_pixelmap.edit_distances(pal.ID)[0][
+            0b00011111110000001101101000]
 
         # Expect byte 2 to map to 0b000101010100 000011011000
         expect2 = target_pixelmap.edit_distances(pal.ID)[2][
-            0b0000101010100000011011000]
+            0b00010101010000000110110000]
 
         self.assertEqual(expect0, diff[0, 0])
         self.assertEqual(expect2, diff[0, 1])
