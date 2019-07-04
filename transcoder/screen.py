@@ -267,28 +267,12 @@ class Bitmap:
                 self.packed[page, offset - 1],
                 self.packed[page, offset]
             )
-
-            # # Need to also update the 3-bit footer of the preceding column
-            # self.packed[page, packed_offset - 1] &= np.uint64(2 ** 31 - 1)
-            #
-            # self.packed[page, packed_offset - 1] ^= (
-            #         (self.packed[page, packed_offset] & np.uint64(0b111 << 3))
-            #         << np.uint64(28)
-            # )
         elif byte_offset == (self.SCREEN_BYTES - 1) and offset < 127:
             # Need to also update the 3-bit header of the next column
             self.packed[page, offset + 1] = self._fix_column_right(
                 self.packed[page, offset + 1],
                 self.packed[page, offset]
             )
-
-            # self.packed[page, offset + 1] &= np.uint64(
-            #     (2 ** 31 - 1) << 3)
-            #
-            # self.packed[page, offset + 1] ^= (
-            #         (self.packed[page, offset] & np.uint64(0b111 << 28))
-            #         >> np.uint64(28)
-            # )
 
     def _fix_column_left(
             self,
@@ -324,25 +308,11 @@ class Bitmap:
             # Need to also update the 3-bit footer of the preceding column
             shifted_left = np.roll(ary, -1, axis=1)
             self._fix_column_left(ary, shifted_left)
-            #
-            # # Mask out all footers
-            # ary &= np.uint64(2 ** 31 - 1)
-            #
-            # shifted_left = np.roll(ary, -1, axis=1)
-            # ary ^= self._make_footer(shifted_left)
-            # new ^= (shifted & np.uint64(0b111 << 3)) << np.uint64(28)
 
         elif byte_offset == 3:
             # Need to also update the 3-bit header of the next column
             shifted_right = np.roll(ary, 1, axis=1)
             self._fix_column_right(ary, shifted_right)
-            #
-            # # Mask out all headers
-            # ary &= np.uint64((2 ** 31 - 1) << 3)
-            #
-            # shifted_right = np.roll(ary, 1, axis=1)
-            # ary ^= self._make_header(shifted_right)
-        #           # new ^= (shifted & np.uint64(0b111 << 28)) >> np.uint64(28)
 
     @functools.lru_cache(None)
     def edit_distances(self, palette_id: pal.Palette) -> List[np.ndarray]:
@@ -424,78 +394,7 @@ class Bitmap:
     ) -> np.ndarray:
         # TODO: use error edit distance
 
-        # XXX reuse code
-        #
-        # diff = np.ndarray((32, 256), dtype=np.int)
-        #
-        # if is_aux:
-        #     offsets = [0, 2]
-        # else:
-        #     offsets = [1, 3]
-        #
-        # # TODO: extract into parent class
-        # dists = []
-        # for o in offsets:
-        #     # Pixels influenced by byte offset o
-        #     source_pixels = self.mask_and_shift_data(
-        #         self.masked_update_array(0, self.packed, content), o)
-        #     target_pixels = self.mask_and_shift_data(self.packed, o)
-        #
-        #     # Concatenate 13-bit source and target into 26-bit values
-        #     pair = (source_pixels << np.uint64(self.MASKED_BITS)) + target_pixels
-        #     dist = self.edit_distances(self.palette)[o][pair].reshape(
-        #         pair.shape)
-        #     dists.append(dist)
-        #
-        # diff[:, 0::2] = dists[0]
-        # diff[:, 1::2] = dists[1]
-
         diff = self._diff_weights(self.packed, is_aux, content)
-
-        #
-        #
-        # if is_aux:
-        #     # Pixels influenced by byte offset 0
-        #     source_pixels0 = self.mask_and_shift_data(
-        #         self.masked_update_array(0, self.packed, content), 0)
-        #     target_pixels0 = self.mask_and_shift_data(self.packed, 0)
-        #
-        #     # Concatenate 13-bit source and target into 26-bit values
-        #     pair0 = (source_pixels0 << np.uint64(13)) + target_pixels0
-        #     dist0 = self.edit_distances(self.palette)[0][pair0].reshape(
-        #         pair0.shape)
-        #
-        #     # Pixels influenced by byte offset 2
-        #     source_pixels2 = self.mask_and_shift_data(
-        #         self.masked_update_array(2, self.packed, content), 2)
-        #     target_pixels2 = self.mask_and_shift_data(self.packed, 2)
-        #     # Concatenate 13-bit source and target into 26-bit values
-        #     pair2 = (source_pixels2 << np.uint64(13)) + target_pixels2
-        #     dist2 = self.edit_distances(self.palette)[2][pair2].reshape(
-        #         pair2.shape)
-        #
-        #     diff[:, 0::2] = dist0
-        #     diff[:, 1::2] = dist2
-        #
-        # else:
-        #     # Pixels influenced by byte offset 1
-        #     source_pixels1 = self.mask_and_shift_data(
-        #         self.masked_update_array(1, self.packed, content), 1)
-        #     target_pixels1 = self.mask_and_shift_data(self.packed, 1)
-        #     pair1 = (source_pixels1 << np.uint64(13)) + target_pixels1
-        #     dist1 = self.edit_distances(self.palette)[1][pair1].reshape(
-        #         pair1.shape)
-        #
-        #     # Pixels influenced by byte offset 3
-        #     source_pixels3 = self.mask_and_shift_data(
-        #         self.masked_update_array(3, self.packed, content), 3)
-        #     target_pixels3 = self.mask_and_shift_data(self.packed, 3)
-        #     pair3 = (source_pixels3 << np.uint64(13)) + target_pixels3
-        #     dist3 = self.edit_distances(self.palette)[3][pair3].reshape(
-        #         pair3.shape)
-        #
-        #     diff[:, 0::2] = dist1
-        #     diff[:, 1::2] = dist3
 
         # TODO: try different weightings
         return (diff * 5) - old
@@ -752,24 +651,6 @@ class DHGRBitmap(Bitmap):
 
         return offsets
 
-    #
-    # # XXX test
-    # @staticmethod
-    # def masked_update_scalar(
-    #         byte_offset: int,
-    #         old_value: np.uint64,
-    #         new_value: np.uint8) -> np.uint64:
-    #     # Mask out 7-bit value where update will go
-    #     masked_value = old_value & (
-    #         ~np.uint64(0x7f << (7 * byte_offset + 3)))
-    #
-    #     update = (new_value & np.uint64(0x7f)) << np.uint64(
-    #         7 * byte_offset + 3)
-    #
-    #     new = masked_value ^ update
-    #     return new
-
-    # XXX test
     @staticmethod
     def masked_update(
             byte_offset: int,
