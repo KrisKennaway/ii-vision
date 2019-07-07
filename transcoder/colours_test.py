@@ -7,7 +7,7 @@ HGRColours = colours.HGRColours
 
 class TestColours(unittest.TestCase):
 
-    def test_int34_to_pixels(self):
+    def test_dots_to_pixels(self):
         self.assertEqual(
             (
                 HGRColours.BLACK,
@@ -42,8 +42,8 @@ class TestColours(unittest.TestCase):
                 HGRColours.BLACK,
                 HGRColours.BLACK
             ),
-            colours.int34_to_nominal_colour_pixels(
-                0b00000000000000000000111000000000, HGRColours, init_phase=0
+            colours.dots_to_nominal_colour_pixels(
+                31, 0b00000000000000000000111000000000, HGRColours, init_phase=0
             )
         )
 
@@ -81,8 +81,8 @@ class TestColours(unittest.TestCase):
                 HGRColours.BLACK,
                 HGRColours.BLACK
             ),
-            colours.int34_to_nominal_colour_pixels(
-                0b0000111100001111000011110000, HGRColours, init_phase=0
+            colours.dots_to_nominal_colour_pixels(
+                31, 0b0000111100001111000011110000, HGRColours, init_phase=0
             )
         )
 

@@ -82,41 +82,32 @@ class DHGRColours(NominalColours):
     WHITE = 0b1111
 
 
-# @functools.lru_cache(None)
-# def int28_to_nominal_colour_pixels2(int28):
-#     return tuple(
-#         HGRColours(
-#             (int28 & (0b1111 << (4 * i))) >> (4 * i)) for i in range(7)
-#     )
-
-
 @functools.lru_cache(None)
-def int34_to_nominal_colour_pixels(
-        int34: int,
+def dots_to_nominal_colour_pixels(
+        num_bits: int,
+        dots: int,
         colours: Type[NominalColours],
-        init_phase: int = 1  # Such that phase = 0 at start of 28-bit body
+        init_phase: int = 1  # Such that phase = 0 at start of body
 ) -> Tuple[NominalColours]:
-    """Produce sequence of 31 nominal colour pixels via sliding 4-bit window.
+    """Sequence of num_bits nominal colour pixels via sliding 4-bit window.
 
     Includes the 3-bit header that represents the trailing 3 bits of the
-    previous 28-bit tuple.  i.e. storing a byte in aux even columns will also
+    previous tuple body.  i.e. storing a byte in aux even columns will also
     influence the colours of the previous main odd column.
 
     This naively models the NTSC colour artifacting.
 
-    TODO: Use a more careful colour composition model to produce effective
-    pixel colours.
+    TODO: Use a more careful analogue colour composition model to produce
+    effective pixel colours.
 
     TODO: DHGR vs HGR colour differences can be modeled by changing init_phase
     """
     res = []
 
-    shifted = int34
+    shifted = dots
     phase = init_phase
 
-    # Omit trailing 3 bits which are only there to provide a trailer for
-    # bits 28..31
-    for i in range(31):
+    for i in range(num_bits):
         colour = rol(shifted & 0b1111, phase)
         res.append(colours(colour))
 
@@ -129,12 +120,13 @@ def int34_to_nominal_colour_pixels(
 
 
 @functools.lru_cache(None)
-def int34_to_nominal_colour_pixel_values(
-        int34: int,
+def dots_to_nominal_colour_pixel_values(
+        num_bits: int,
+        dots: int,
         colours: Type[NominalColours],
-        init_phase: int = 1  # Such that phase = 0 at start of 28-bit body
+        init_phase: int = 1  # Such that phase = 0 at start of body
 ) -> Tuple[int]:
-    return tuple(p.value for p in int34_to_nominal_colour_pixels(
-        int34, colours, init_phase
+    return tuple(p.value for p in dots_to_nominal_colour_pixels(
+        num_bits, dots, colours, init_phase
     ))
 
