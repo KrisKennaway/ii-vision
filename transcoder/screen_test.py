@@ -3,62 +3,16 @@
 import unittest
 
 import numpy as np
-from etaprogress.progress import ProgressBar
 
-import colours
-from palette import Palette, PALETTES
 import screen
-import sys
+import colours
+from palette import Palette
 
 
 class TestDHGRBitmap(unittest.TestCase):
     def setUp(self) -> None:
         self.aux = screen.MemoryMap(screen_page=1)
         self.main = screen.MemoryMap(screen_page=1)
-
-    def test_edit_distances(self):
-        for p in PALETTES:
-            ed = screen._edit_distances("DHGR", p)
-            print(p)
-
-            bar = ProgressBar((2 ** 13 * (2 ** 13 - 1)) / 2, max_width=80)
-
-            cnt = 0
-            for i in range(2 ** 13):
-                # Assert that self-distances are zero
-
-                self.assertEqual(0, ed[0][(i << 13) + i])
-                self.assertEqual(0, ed[1][(i << 13) + i])
-                self.assertEqual(0, ed[2][(i << 13) + i])
-                self.assertEqual(0, ed[3][(i << 13) + i])
-
-                # Assert that matrix is triangular
-
-                for j in range(i):
-
-                    cnt += 1
-
-                    if cnt % 10000 == 0:
-                        bar.numerator = cnt
-                        print(bar, end='\r')
-                        sys.stdout.flush()
-
-                    self.assertEqual(
-                        ed[0][(i << 13) + j],
-                        ed[0][(j << 13) + i],
-                    )
-                    self.assertEqual(
-                        ed[1][(i << 13) + j],
-                        ed[1][(j << 13) + i],
-                    )
-                    self.assertEqual(
-                        ed[2][(i << 13) + j],
-                        ed[2][(j << 13) + i],
-                    )
-                    self.assertEqual(
-                        ed[3][(i << 13) + j],
-                        ed[3][(j << 13) + i],
-                    )
 
     def test_make_header(self):
         self.assertEqual(
@@ -376,406 +330,742 @@ def binary(a):
     return np.vectorize("{:032b}".format)(a)
 
 
-# class TestHGRBitmap:  # unittest.TestCase):
-#     def setUp(self) -> None:
-#         self.main = screen.MemoryMap(screen_page=1)
-#
-#     def test_pixel_packing_p0_p0(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b01000011
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b01000011
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b1100000000111111000000001111
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#     def test_pixel_packing_p0_p1(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b01000011
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b11000011
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b1000000001111111000000001111
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#     def test_pixel_packing_p1_p0(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11000011
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b01000011
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b1100000000111110000000011110
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#     def test_pixel_packing_p1_p1(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11000011
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b11000011
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b1000000001111110000000011110
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#     def test_pixel_packing_p1_promote_p0(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b00000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b01000000
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 2] = 0b10000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b0000000000000000000000000001
-#         got = hgr.packed[0, 1]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#     def test_pixel_packing_p1_promote_p1(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b00000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b11000000
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 2] = 0b10000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b0000000000000000000000000001
-#         got = hgr.packed[0, 1]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#     def test_nominal_colours(self):
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b01010101
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00101010
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 2] = 0b01010101
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b000110011001100110011001100110011
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.VIOLET,
-#             ),
-#             colours.int34_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     # See Figure 8.15 from Sather, "Understanding the Apple IIe"
-#
-#     def test_nominal_colours_sather1(self):
-#         # Extend violet into light blue
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b01000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b10000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.LIGHT_BLUE,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather2(self):
-#         # Cut off blue with black to produce dark blue
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.DARK_BLUE,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather3(self):
-#         # Cut off blue with green to produce aqua
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00000001
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.AQUA,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather4(self):
-#         # Cut off white with black to produce pink
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11100000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b0000000000000011100000000000
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#         # TODO: BROWN(0001)/VIOLET(1100) should reframe to PINK (1011)
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BROWN,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather5(self):
-#         # Extend green into light brown
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b01000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b10000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b0000000000000111000000000000
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#         # TODO: LIGHT_BLUE should reframe to PINK (1011)
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.LIGHT_BLUE,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather6(self):
-#         # Cut off orange with black to produce dark brown
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b00000000000000010000000000000
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#         # TODO: DARK_BLUE should reframe to DARK_BROWN
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.DARK_BLUE,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather7(self):
-#         # Cut off orange with violet to produce pink
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11000000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00000001
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b00000000000001110000000000000
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#         # TODO: AQUA should reframe to PINK
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.AQUA,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(hgr.packed[0, 0],
-#                                                    colours.HGRColours)
-#         )
-#
-#     def test_nominal_colours_sather8(self):
-#         # Cut off white with black to produce aqua
-#
-#         #                               PDCCBBAA
-#         self.main.page_offset[0, 0] = 0b11100000
-#         #                               PGGFFEED
-#         self.main.page_offset[0, 1] = 0b00000000
-#
-#         hgr = screen.HGRBitmap(
-#             main_memory=self.main)
-#
-#         want = 0b00000000000000011100000000000
-#         got = hgr.packed[0, 0]
-#
-#         self.assertEqual(
-#             want, got, "\n%s\n%s" % (binary(want), binary(got))
-#         )
-#
-#         # TODO: BROWN/VIOLET should reframe to AQUA
-#         self.assertEqual(
-#             (
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BROWN,
-#                 colours.HGRColours.VIOLET,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#                 colours.HGRColours.BLACK,
-#             ),
-#             colours.int28_to_nominal_colour_pixels(
-#                 hgr.packed[0, 0], colours.HGRColours)
-#         )
+class TestHGRBitmap(unittest.TestCase):
+    def setUp(self) -> None:
+        self.main = screen.MemoryMap(screen_page=1)
+
+    def test_make_header(self):
+        self.assertEqual(
+            0b111,
+            screen.HGRBitmap._make_header(
+                np.uint64(0b0001100000100000000000))
+        )
+
+        # Now check palette bit ends up in right spot
+        self.assertEqual(
+            0b100,
+            screen.HGRBitmap._make_header(
+                np.uint64(0b0000000000100000000000))
+        )
+
+    def test_make_footer(self):
+        self.assertEqual(
+            0b1110000000000000000000,
+            screen.HGRBitmap._make_footer(
+                np.uint64(0b0000000000010000011000))
+        )
+
+        # Now check palette bit ends up in right spot
+        self.assertEqual(
+            0b0010000000000000000000,
+            screen.HGRBitmap._make_footer(
+                np.uint64(0b0000000000010000000000))
+        )
+
+    def test_pixel_packing_p0_p0(self):
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b01000011
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b01000011
+
+        hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        want = 0b0001000011001000011000
+        got = hgr.packed[0, 0]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_pixel_packing_p0_p1(self):
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b01000011
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b11000011
+
+        hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        want = 0b0001000011101000011000
+        got = hgr.packed[0, 0]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_pixel_packing_p1_p0(self):
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b11000011
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b01000011
+
+        hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        want = 0b0001000011011000011000
+        got = hgr.packed[0, 0]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_pixel_packing_p1_p1(self):
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b11000011
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b11000011
+
+        hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        want = 0b1000011111000011000
+        got = hgr.packed[0, 0]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_masked_update(self):
+
+        hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        hgr.apply(0, 0, False, 0b11000011)
+        hgr.apply(0, 1, False, 0b11000011)
+
+        want = 0b1000011111000011000
+        got = hgr.packed[0, 0]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_double_pixels(self):
+        want = 0b111001100110011
+        got = screen.HGRBitmap._double_pixels(0b1010101)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_to_dots_offset_0(self):
+        # Header has P=0, Body has P=0
+        want = 0b00000000000000000111
+        got = screen.HGRBitmap.to_dots(0b00000000000011, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=0 - cuts off
+        want = 0b00000000000000000111
+        got = screen.HGRBitmap.to_dots(0b00000000000111, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1
+        want = 0b00000000000000001111
+        got = screen.HGRBitmap.to_dots(0b00010000000111, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1, footer has P=0 - cuts off body
+        want = 0b00010011001100111111
+        got = screen.HGRBitmap.to_dots(0b00011010101111, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1, footer has P=1
+        want = 0b00110011001100111111
+        got = screen.HGRBitmap.to_dots(0b00111010101111, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1, footer has P=1
+        want = 0b100110011001100111111
+        got = screen.HGRBitmap.to_dots(0b10111010101111, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=0, body has P=0, footer has P=1
+        want = 0b100000000000000000000
+        got = screen.HGRBitmap.to_dots(0b10100000000000, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=0, body has P=0, footer has P=0
+        want = 0b110000000000000000000
+        got = screen.HGRBitmap.to_dots(0b10000000000000, 0)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+    def test_to_dots_offset_1(self):
+        # Header has P=0, Body has P=0
+        want = 0b000000000000000000111
+        got = screen.HGRBitmap.to_dots(0b00000000000011, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=0 - cuts off
+        want = 0b000000000000000000111
+        got = screen.HGRBitmap.to_dots(0b00000000000111, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1
+        want = 0b000000000000000001111
+        got = screen.HGRBitmap.to_dots(0b00000000001111, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1, footer has P=0 - cuts off body
+        want = 0b000010011001100111111
+        got = screen.HGRBitmap.to_dots(0b00010101011111, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1, footer has P=1
+        want = 0b000110011001100111111
+        got = screen.HGRBitmap.to_dots(0b00110101011111, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=1, body has P=1, footer has P=1
+        want = 0b100110011001100111111
+        got = screen.HGRBitmap.to_dots(0b10110101011111, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=0, body has P=0, footer has P=1
+        want = 0b100000000000000000000
+        got = screen.HGRBitmap.to_dots(0b10100000000000, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        # Header has P=0, body has P=0, footer has P=0
+        want = 0b110000000000000000000
+        got = screen.HGRBitmap.to_dots(0b10000000000000, 1)
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+
+class TestNominalColours(unittest.TestCase):
+    def setUp(self) -> None:
+        self.main = screen.MemoryMap(screen_page=1)
+
+        self.maxDiff = None
+
+    def test_nominal_colours(self):
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b01010101
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b00101010
+        #                               PDCCBBAA
+        self.main.page_offset[0, 2] = 0b01010101
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        want = 0b0100101010001010101000
+        got = self.hgr.packed[0, 0]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=0))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=0)
+        self.assertEqual(
+            (
+                colours.HGRColours.MAGENTA,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[0])
+        )
+
+        # Now check byte offset 1
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=1))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=1)
+        self.assertEqual(
+            (
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[1])
+        )
+
+    # See Figure 8.15 from Sather, "Understanding the Apple IIe"
+
+    def test_nominal_colours_sather_even_1(self):
+        # Extend violet into light blue
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b01000000
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b10000000
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=0))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=0)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.MAGENTA,  # 1000
+                colours.HGRColours.VIOLET,  # 1100
+                colours.HGRColours.LIGHT_BLUE,  # 1110
+                colours.HGRColours.LIGHT_BLUE,  # 1110
+                colours.HGRColours.MED_BLUE,  # 0110
+                #  last repeated bit from byte 0
+                colours.HGRColours.DARK_GREEN,  # 0010
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[0])
+        )
+
+    def test_nominal_colours_sather_even_2(self):
+        # Cut off blue with black to produce dark blue
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b11000000
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b00000000
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=0))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=0)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.DARK_BLUE,  # 0100
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.BLACK,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[0])
+        )
+
+    def test_nominal_colours_sather_even_3(self):
+        # Cut off blue with green to produce aqua
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b11000000
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b00000001
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=0))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=0)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.MED_BLUE,
+                colours.HGRColours.AQUA,
+                colours.HGRColours.AQUA,
+                colours.HGRColours.GREEN,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[0])
+        )
+
+    def test_nominal_colours_sather_even_4(self):
+        # Cut off white with black to produce pink
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b11100000
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b00000000
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=0))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=0)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.ORANGE,
+                colours.HGRColours.PINK,
+                colours.HGRColours.PINK,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.BLACK,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[0])
+        )
+
+    def test_nominal_colours_sather_even_5(self):
+        # Cut off orange-black with green to produce bright green
+
+        # "Bright" here is because the sequence of pixels has high intensity
+        # Orange-Orange-Yellow-Yellow-Green-Green
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 0] = 0b10100000
+        #                               PGGFFEED
+        self.main.page_offset[0, 1] = 0b00000001
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=0))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=0)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BROWN,  # 0001
+                colours.HGRColours.ORANGE,  # 1001
+                colours.HGRColours.ORANGE,  # 1001
+                colours.HGRColours.YELLOW,  # 1011
+                colours.HGRColours.YELLOW,  # 1011
+                colours.HGRColours.GREEN,  # 0011
+                colours.HGRColours.GREEN,  # 0011
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[0])
+        )
+
+    def test_nominal_colours_sather_odd_1(self):
+        # Extend green into light brown
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 1] = 0b01000000
+        #                               PGGFFEED
+        self.main.page_offset[0, 2] = 0b10000000
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=1))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=1)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.DARK_GREEN,
+                colours.HGRColours.GREEN,
+                colours.HGRColours.YELLOW,
+                colours.HGRColours.YELLOW,
+                colours.HGRColours.ORANGE,
+                colours.HGRColours.MAGENTA,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[1])
+        )
+
+    def test_nominal_colours_sather_odd_2(self):
+        # Cut off orange with black to produce dark brown
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 1] = 0b11000000
+        #                               PGGFFEED
+        self.main.page_offset[0, 2] = 0b00000000
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=1))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=1)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.BLACK,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[1])
+        )
+
+    def test_nominal_colours_sather_odd_3(self):
+        # Cut off orange with violet to produce pink
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 1] = 0b11000000
+        #                               PGGFFEED
+        self.main.page_offset[0, 2] = 0b00000001
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=1))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=1)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.ORANGE,
+                colours.HGRColours.PINK,
+                colours.HGRColours.PINK,
+                colours.HGRColours.VIOLET,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[1])
+        )
+
+    def test_nominal_colours_sather_odd_4(self):
+        # Cut off white with black to produce aqua
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 1] = 0b11100000
+        #                               PGGFFEED
+        self.main.page_offset[0, 2] = 0b00000000
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=1))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=1)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.MED_BLUE,
+                colours.HGRColours.AQUA,
+                colours.HGRColours.AQUA,
+                colours.HGRColours.GREEN,
+                colours.HGRColours.BROWN,
+                colours.HGRColours.BLACK,
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[1])
+        )
+
+    def test_nominal_colours_sather_odd_5(self):
+        # Cut off blue-black with violet to produce bright violet
+
+        # "Bright" here is because the sequence of pixels has high intensity
+        # Blue-Blue-Light Blue-Light Blue-Violet-Violet
+
+        #                               PDCCBBAA
+        self.main.page_offset[0, 1] = 0b10100000
+        #                               PGGFFEED
+        self.main.page_offset[0, 2] = 0b00000001
+
+        self.hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        masked = int(screen.HGRBitmap.mask_and_shift_data(
+            self.hgr.packed[0, 0], byte_offset=1))
+        dots = screen.HGRBitmap.to_dots(masked, byte_offset=1)
+
+        self.assertEqual(
+            (
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.BLACK,
+                colours.HGRColours.DARK_BLUE,
+                colours.HGRColours.MED_BLUE,
+                colours.HGRColours.MED_BLUE,
+                colours.HGRColours.LIGHT_BLUE,
+                colours.HGRColours.LIGHT_BLUE,
+                colours.HGRColours.VIOLET,
+                colours.HGRColours.VIOLET
+            ),
+            colours.dots_to_nominal_colour_pixels(
+                18, dots, colours.HGRColours,
+                init_phase=screen.HGRBitmap.PHASES[1])
+        )
 
 
 if __name__ == '__main__':
