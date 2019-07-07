@@ -1,8 +1,7 @@
 import bz2
 import functools
 import pickle
-import time
-import datetime
+import sys
 from typing import Iterable, Type
 
 import colormath.color_conversions
@@ -10,9 +9,11 @@ import colormath.color_diff
 import colormath.color_objects
 import numpy as np
 import weighted_levenshtein
+from etaprogress.progress import ProgressBar
 
 import colours
 import palette
+import screen
 
 # The DHGR display encodes 7 pixels across interleaved 4-byte sequences
 # of AUX and MAIN memory, as follows:
@@ -118,7 +119,7 @@ def compute_diff_matrix(pal: Type[palette.BasePalette]):
     return dm
 
 
-def make_substitute_costs(pal: Type[palette.BasePalette]):
+def compute_substitute_costs(pal: Type[palette.BasePalette]):
     edp = EditDistanceParams()
 
     diff_matrix = compute_diff_matrix(pal)
@@ -152,86 +153,80 @@ def edit_distance(
     return res
 
 
-def make_edit_distance(edp: EditDistanceParams):
-    edit = [
-        np.zeros(shape=(2 ** 26), dtype=np.uint16),
-        np.zeros(shape=(2 ** 26), dtype=np.uint16),
-        np.zeros(shape=(2 ** 26), dtype=np.uint16),
-        np.zeros(shape=(2 ** 26), dtype=np.uint16),
-    ]
+def compute_edit_distance(
+        edp: EditDistanceParams,
+        bitmap_cls: Type[screen.Bitmap],
+        nominal_colours: Type[colours.NominalColours]
+):
+    bits = bitmap_cls.MASKED_BITS
 
-    start_time = time.time()
+    bitrange = np.uint64(2 ** bits)
 
-    for i in range(2 ** 13):
-        if i > 1:
-            now = time.time()
-            eta = datetime.timedelta(
-                seconds=(now - start_time) * (2 ** 13 / i))
-            print("%.2f%% (ETA %s)" % (100 * i / (2 ** 13), eta))
-        for j in range(2 ** 13):
-            pair = (i << 13) + j
+    edit = []
+    for _ in range(len(bitmap_cls.BYTE_MASKS)):
+        edit.append(
+            np.zeros(shape=np.uint64(bitrange * bitrange), dtype=np.uint16))
 
-            # Each DHGR byte offset has the same range of int13 possible
-            # values and nominal colour pixels, but with different initial
-            # phases:
-            # AUX 0: 0 (1 at start of 3-bit header)
-            # MAIN 0: 3 (0)
-            # AUX 1: 2 (3)
-            # MAIN 1: 1 (2)
+    # Matrix is symmetrical with zero diagonal so only need to compute upper
+    # triangle
+    bar = ProgressBar((bitrange * (bitrange - 1)) / 2, max_width=80)
 
-            first_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    i, colours.DHGRColours, init_phase=1)
-            )
-            second_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    j, colours.DHGRColours, init_phase=1))
-            edit[0][pair] = edit_distance(
-                edp, first_pixels, second_pixels, error=False)
+    num_dots = bitmap_cls.HEADER_BITS + bitmap_cls.BODY_BITS
 
-            first_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    i, colours.DHGRColours, init_phase=0)
-            )
-            second_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    j, colours.DHGRColours, init_phase=0))
-            edit[1][pair] = edit_distance(
-                edp, first_pixels, second_pixels, error=False)
+    cnt = 0
+    for i in range(np.uint64(bitrange)):
+        for j in range(i):
+            cnt += 1
 
-            first_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    i, colours.DHGRColours, init_phase=3)
-            )
-            second_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    j, colours.DHGRColours, init_phase=3))
-            edit[2][pair] = edit_distance(
-                edp, first_pixels, second_pixels, error=False)
+            if cnt % 10000 == 0:
+                bar.numerator = cnt
+                print(bar, end='\r')
+                sys.stdout.flush()
 
-            first_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    i, colours.DHGRColours, init_phase=2)
-            )
-            second_pixels = pixel_string(
-                colours.int34_to_nominal_colour_pixel_values(
-                    j, colours.DHGRColours, init_phase=2))
-            edit[3][pair] = edit_distance(
-                edp, first_pixels, second_pixels, error=False)
+            pair = (np.uint64(i) << bits) + np.uint64(j)
+
+            for o, ph in enumerate(bitmap_cls.PHASES):
+                first_dots = bitmap_cls.to_dots(i, byte_offset=o)
+                second_dots = bitmap_cls.to_dots(j, byte_offset=o)
+
+                first_pixels = pixel_string(
+                    colours.dots_to_nominal_colour_pixel_values(
+                        num_dots, first_dots, nominal_colours,
+                        init_phase=ph)
+                )
+                second_pixels = pixel_string(
+                    colours.dots_to_nominal_colour_pixel_values(
+                        num_dots, second_dots, nominal_colours,
+                        init_phase=ph)
+                )
+                edit[o][pair] = edit_distance(
+                    edp, first_pixels, second_pixels, error=False)
+
     return edit
+
+
+def make_edit_distance(
+        pal: Type[palette.BasePalette],
+        edp: EditDistanceParams,
+        bitmap_cls: Type[screen.Bitmap],
+        nominal_colours: Type[colours.NominalColours]
+):
+    dist = compute_edit_distance(edp, bitmap_cls, nominal_colours)
+    data = "transcoder/data/%s_palette_%d_edit_distance.pickle.bz2" % (
+        bitmap_cls.NAME, pal.ID.value)
+    with bz2.open(data, "wb", compresslevel=9) as out:
+        pickle.dump(dist, out, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def main():
     for p in palette.PALETTES.values():
         print("Processing palette %s" % p)
-        edp = make_substitute_costs(p)
-        edit = make_edit_distance(edp)
+        edp = compute_substitute_costs(p)
 
         # TODO: error distance matrices
-        data = "transcoder/data/DHGR_palette_%d_edit_distance.pickle" \
-               ".bz2" % p.ID.value
-        with bz2.open(data, "wb", compresslevel=9) as out:
-            pickle.dump(edit, out, protocol=pickle.HIGHEST_PROTOCOL)
+
+        make_edit_distance(p, edp, screen.HGRBitmap, colours.HGRColours)
+        make_edit_distance(p, edp, screen.DHGRBitmap, colours.DHGRColours)
 
 
 if __name__ == "__main__":
