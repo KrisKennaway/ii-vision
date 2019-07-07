@@ -41,11 +41,16 @@ class Video:
             self.aux_memory_map = screen.MemoryMap(
                 screen_page=1)  # type: screen.MemoryMap
 
-        self.pixelmap = screen.DHGRBitmap(
-            palette=palette,
-            main_memory=self.memory_map,
-            aux_memory=self.aux_memory_map
-        )
+            self.pixelmap = screen.DHGRBitmap(
+                palette=palette,
+                main_memory=self.memory_map,
+                aux_memory=self.aux_memory_map
+            )
+        else:
+            self.pixelmap = screen.HGRBitmap(
+                palette=palette,
+                main_memory=self.memory_map,
+            )
 
         # Accumulates pending edit weights across frames
         self.update_priority = np.zeros((32, 256), dtype=np.int)
@@ -89,16 +94,22 @@ class Video:
     ) -> Iterator[Tuple[int, int, List[int]]]:
         """Transform encoded screen to sequence of change tuples."""
 
-        if is_aux:
-            target_pixelmap = screen.DHGRBitmap(
-                main_memory=self.memory_map,
-                aux_memory=target,
-                palette=self.palette
-            )
+        if self.mode == VideoMode.DHGR:
+            if is_aux:
+                target_pixelmap = screen.DHGRBitmap(
+                    main_memory=self.memory_map,
+                    aux_memory=target,
+                    palette=self.palette
+                )
+            else:
+                target_pixelmap = screen.DHGRBitmap(
+                    main_memory=target,
+                    aux_memory=self.aux_memory_map,
+                    palette=self.palette
+                )
         else:
-            target_pixelmap = screen.DHGRBitmap(
+            target_pixelmap = screen.HGRBitmap(
                 main_memory=target,
-                aux_memory=self.aux_memory_map,
                 palette=self.palette
             )
 
