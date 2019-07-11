@@ -14,7 +14,7 @@ IntOrArray = Union[np.uint64, np.ndarray]
 
 
 def y_to_base_addr(y: int, page: int = 0) -> int:
-    """Maps y coordinate to base address on given screen page"""
+    """Maps y coordinate to base address on given screen page."""
     a = y // 64
     d = y - 64 * a
     b = d // 8
@@ -126,33 +126,44 @@ class MemoryMap:
 
 
 class Bitmap:
-    """Packed 28-bit bitmap representation of (D)HGR screen memory.
+    """Packed bitmap representation of (D)HGR screen memory.
 
-    XXX comments
-
-    The memory layout is still page-oriented, not linear y-x buffer but the
-    bit map is such that 20 consecutive entries linearly encode the 28*20 =
-    560-bit monochrome dot positions that underlie both Mono and Colour (
-    D)HGR screens.
-
-    For Colour display the (nominal) colours are encoded as 4-bit pixels.
+    Maintains a page-based array whose entries contain a packed representation
+    of multiple screen bytes, in a representation that supports efficiently
+    determining the visual effect of storing bytes at arbitrary screen offsets.
     """
 
+    # NOTE: See https://github.com/numpy/numpy/issues/2524 and related issues
+    # for why we have to cast things explicitly to np.uint64 - type promotion
+    # to uint64 is broken in numpy :(
+
+    # Name of bitmap type
     NAME = None  # type: str
 
-    # Size of packed representation
+    # Size of packed representation, consisting of header + body + footer
     HEADER_BITS = None  # type: np.uint64
     BODY_BITS = None  # type: np.uint64
     FOOTER_BITS = None  # type: np.uint64
 
+    # How many bits of packed representation are necessary to determine the
+    # effect of storing a memory byte, e.g. because they influence pixel
+    # colour or are influenced by other bits.
+    MASKED_BITS = None  # type: np.uint64
+
+    # How many coloured screen pixels we can extract from MASKED_BITS.  Note
+    # that this does not include the last 3 dots represented by the footer,
+    # since we don't have enough information to determine their colour (we
+    # would fall off the end of the 4-bit sliding window)
+    MASKED_DOTS = None  # type: np.uint64
+
+    # List of bitmasks for extracting the subset of packed data corresponding
+    # to bits influencing/influenced by a given byte offset.  These must be
+    # a contiguous bit mask, i.e. so that after shifting they are enumerated
+    # by 0..2**MASKED_BITS-1
     BYTE_MASKS = None  # type: List[np.uint64]
     BYTE_SHIFTS = None  # type: List[np.uint64]
 
-    # How many bits of packed representation are influenced when storing a
-    # memory byte
-    MASKED_BITS = None  # type: np.uint64
-
-    # XXX
+    # NTSC clock phase at first masked bit
     PHASES = None  # type: List[int]
 
     def __init__(
@@ -176,18 +187,21 @@ class Bitmap:
             shape=(32, 128), dtype=np.uint64)  # type: np.ndarray
         self._pack()
 
-    def _body(self) -> np.ndarray:
-        raise NotImplementedError
-
     # TODO: don't leak headers/footers across screen rows.  We should be using
     # x-y representation rather than page-offset
 
     @staticmethod
-    def _make_header(prev_col: IntOrArray) -> IntOrArray:
+    def _make_header(col: IntOrArray) -> IntOrArray:
+        """Extract values to use as header of next column."""
+        raise NotImplementedError
+
+    def _body(self) -> np.ndarray:
+        """Pack related screen bytes into an efficient representation."""
         raise NotImplementedError
 
     @staticmethod
-    def _make_footer(next_col: IntOrArray) -> IntOrArray:
+    def _make_footer(col: IntOrArray) -> IntOrArray:
+        """Extract values to use as footer of previous column."""
         raise NotImplementedError
 
     def _pack(self) -> None:
@@ -195,17 +209,15 @@ class Bitmap:
 
         body = self._body()
 
-        # XXX comments
-        # Prepend last 3 bits of previous main odd byte so we can correctly
-        # decode the effective colours at the beginning of the 28-bit
-        # tuple
+        # Prepend last 3 bits of previous odd byte so we can correctly
+        # decode the effective colours at the beginning of the 22-bit tuple
         prev_col = np.roll(body, 1, axis=1).astype(np.uint64)
         header = self._make_header(prev_col)
         # Don't leak header across page boundaries
         header[:, 0] = 0
 
-        # Append first 3 bits of next aux even byte so we can correctly
-        # decode the effective colours at the end of the 28-bit tuple
+        # Append first 3 bits of next even byte so we can correctly
+        # decode the effective colours at the end of the 22-bit tuple
         next_col = np.roll(body, -1, axis=1).astype(np.uint64)
         footer = self._make_footer(next_col)
         # Don't leak footer across page boundaries
@@ -218,20 +230,27 @@ class Bitmap:
             byte_offset: int,
             old_value: IntOrArray,
             new_value: np.uint8) -> IntOrArray:
+        """Update int/array to store new value at byte_offset in every entry.
+
+        Does not patch up headers/footers of neighbouring columns.
+        """
         raise NotImplementedError
 
     @staticmethod
     @functools.lru_cache(None)
-    def byte_offset(x_byte: int, is_aux: bool) -> int:
+    def byte_offset(page_offset: int, is_aux: bool) -> int:
+        """Map screen offset for aux/main into offset within packed data."""
         raise NotImplementedError
 
     @staticmethod
     @functools.lru_cache(None)
     def _byte_offsets(is_aux: bool) -> Tuple[int, int]:
+        """Return byte offsets within packed data for AUX/MAIN memory."""
         raise NotImplementedError
 
     @classmethod
     def to_dots(cls, masked_val: int, byte_offset: int) -> int:
+        """Convert masked representation to bit sequence of display dots."""
         raise NotImplementedError
 
     def apply(
@@ -254,6 +273,7 @@ class Bitmap:
             page: int,
             offset: int,
             byte_offset: int) -> None:
+        """Fix up column headers/footers when updating a (page, offset)."""
 
         if byte_offset == 0 and offset > 0:
             self.packed[page, offset - 1] = self._fix_column_left(
@@ -272,6 +292,8 @@ class Bitmap:
             column_left: IntOrArray,
             column: IntOrArray
     ) -> IntOrArray:
+        """Patch up the footer of the column to the left."""
+
         # Mask out footer(s)
         column_left &= np.uint64(2 ** (self.HEADER_BITS + self.BODY_BITS) - 1)
         column_left ^= self._make_footer(column)
@@ -283,6 +305,8 @@ class Bitmap:
             column_right: IntOrArray,
             column: IntOrArray
     ) -> IntOrArray:
+        """Patch up the header of the column to the right."""
+
         # Mask out header(s)
         column_right &= np.uint64(
             (2 ** (self.BODY_BITS + self.FOOTER_BITS) - 1)) << self.HEADER_BITS
@@ -295,15 +319,19 @@ class Bitmap:
             ary: np.ndarray,
             byte_offset: int
     ) -> None:
+        """Fix up column headers/footers for all array entries."""
+
+        # TODO: don't leak header/footer across page boundaries
+
         # Propagate new value into neighbouring byte headers/footers if
         # necessary
         if byte_offset == 0:
-            # Need to also update the 3-bit footer of the preceding column
+            # Need to also update the footer of the preceding column
             shifted_left = np.roll(ary, -1, axis=1)
             self._fix_column_left(ary, shifted_left)
 
-        elif byte_offset == 3:
-            # Need to also update the 3-bit header of the next column
+        elif byte_offset == (self.SCREEN_BYTES - 1):
+            # Need to also update the header of the next column
             shifted_right = np.roll(ary, 1, axis=1)
             self._fix_column_right(ary, shifted_right)
 
@@ -340,22 +368,25 @@ class Bitmap:
             cls,
             data: IntOrArray,
             byte_offset: int) -> IntOrArray:
-        """Masks and shifts data into the MASKED_BITS range."""
+        """Masks and shifts packed data into the MASKED_BITS range."""
         res = (data & cls.BYTE_MASKS[byte_offset]) >> (
             cls.BYTE_SHIFTS[byte_offset])
         assert np.all(res <= 2 ** cls.MASKED_BITS)
         return res
 
+    # Can't cache all possible values but this seems to give a good enough hit
+    # rate without costing too much memory
     # TODO: unit tests
-    @functools.lru_cache(None)
+    @functools.lru_cache(10 ** 6)
     def byte_pair_difference(
             self,
             byte_offset: int,
             old_packed: np.uint64,
             content: np.uint8
     ) -> np.uint16:
-        old_pixels = self.mask_and_shift_data(
-            old_packed, byte_offset)
+        """Compute effect of storing a new content byte within packed data."""
+
+        old_pixels = self.mask_and_shift_data(old_packed, byte_offset)
         new_pixels = self.mask_and_shift_data(
             self.masked_update(byte_offset, old_packed, content), byte_offset)
 
@@ -368,15 +399,24 @@ class Bitmap:
             source: "Bitmap",
             is_aux: bool
     ) -> np.ndarray:
+        """Compute edit distance matrix from source bitmap."""
         return self._diff_weights(source.packed, is_aux)
 
+    # TODO: unit test
     def _diff_weights(
             self,
             source_packed: np.ndarray,
             is_aux: bool,
             content: np.uint8 = None
     ) -> np.ndarray:
-        """Computes diff from source_packed to self.packed"""
+        """Computes edit distance matrix from source_packed to self.packed
+
+        If content is set, the distance will be computed as if this value
+        was stored into each offset position of source_packed, i.e. to
+        allow evaluating which offsets (if any) should be chosen for storing
+        this content byte.
+        """
+
         diff = np.ndarray((32, 256), dtype=np.int)
 
         offsets = self._byte_offsets(is_aux)
@@ -384,63 +424,173 @@ class Bitmap:
         dists = []
         for o in offsets:
             if content is not None:
-                source_packed = self.masked_update(o, source_packed, content)
-                self._fix_array_neighbours(source_packed, o)
+                compare_packed = self.masked_update(o, source_packed, content)
+                self._fix_array_neighbours(compare_packed, o)
+            else:
+                compare_packed = source_packed
 
             # Pixels influenced by byte offset o
-            source_pixels = self.mask_and_shift_data(source_packed, o)
+            source_pixels = self.mask_and_shift_data(compare_packed, o)
             target_pixels = self.mask_and_shift_data(self.packed, o)
 
-            # Concatenate 13-bit source and target into 26-bit values
+            # Concatenate N-bit source and target into 2N-bit values
             pair = (source_pixels << self.MASKED_BITS) + target_pixels
             dist = self.edit_distances(self.palette)[o][pair].reshape(
                 pair.shape)
             dists.append(dist)
 
+        # Interleave even/odd columns
         diff[:, 0::2] = dists[0]
         diff[:, 1::2] = dists[1]
 
         return diff
 
+    def _check_consistency(self):
+        """Sanity check that headers and footers are consistent."""
+
+        headers = np.roll(self._make_header(self.packed), 1, axis=1).astype(
+            np.uint64)
+
+        footers = np.roll(self._make_footer(self.packed), -1, axis=1).astype(
+            np.uint64)
+
+        mask_hf = np.uint64(0b1110000000000000000000000000000111)
+
+        res = (self.packed ^ headers ^ footers) & mask_hf
+        nz = np.transpose(np.nonzero(res))
+
+        ok = True
+        if nz.size != 0:
+            for p, o in nz.tolist():
+                if o == 0 or o == 127:
+                    continue
+                ok = False
+                print(p, o, bin(self.packed[p, o - 1]),
+                                bin(headers[p, o]),
+                      bin(self.packed[p, o]),
+                      bin(self.packed[p, o + 1]), bin(footers[p, o]),
+                      bin(res[p, o])
+                      )
+            assert ok
+
     # TODO: unit tests
     def compute_delta(
             self,
             content: int,
-            old: np.ndarray,
+            diff_weights: np.ndarray,
             is_aux: bool
     ) -> np.ndarray:
-        # TODO: use error edit distance
+        """Compute which content stores introduce the least additional error.
 
-        diff = self._diff_weights(self.packed, is_aux, content)
+        We compute the effect of storing content at all possible offsets
+        within self.packed, and then subtract the previous diff weights.
+
+        Negative values indicate that the new content value is closer to the
+        target than the current content.
+        """
+        # TODO: use error edit distance?
+
+        new_diff = self._diff_weights(self.packed, is_aux, content)
 
         # TODO: try different weightings
-        return (diff * 5) - old
+        return (new_diff * 5) - diff_weights
 
 
 class HGRBitmap(Bitmap):
+    """Packed bitmap representation of HGR screen memory.
+
+    The HGR display is encoded in a somewhat complicated way, so we have to
+    do a bit of work to turn it into a useful format.
+
+    Each screen byte consists of a palette bit (7) and 6 data bits (0..6)
+
+    Each non-palette bit turns on two consecutive display dots, with bit 6
+    repeated a third time.  This third dot may or may not be overwritten by the
+    effect of the next byte.
+
+    Turning on the palette bit shifts that byte's dots right by one
+    position.
+
+    Given two neighbouring screen bytes Aaaaaaaa, Bbbbbbbb (at even and odd
+    offsets), where capital letter indicates the position of the palette bit,
+    we use the following 22-bit packed representation:
+
+        2211111111110000000000  <-- bit position in uint22
+        1098765432109876543210
+        ffFbbbbbbbBAaaaaaaaHhh
+
+    h and f are headers/footers derived from the neighbouring screen bytes.
+
+    Since our colour artifact model (see colours.py) uses a sliding 4-bit window
+    onto the dot string, we need to also include a 3-bit header and footer
+    to account for the influence from/on neighbouring bytes, i.e. adjacent
+    packed values.  These are just the low/high 2 data bits of the 16-bit
+    body of those neighbouring columns, plus the corresponding palette bit.
+
+    This 22-bit packed representation is sufficient to compute the effects
+    (on pixel colours) of storing a byte at even or odd offsets.  From it we
+    can extract the bit stream of displayed HGR dots, and the mapping to pixel
+    colours follows the HGRColours bitmap, see colours.py.
+
+    We put the two A/B palette bits next to each other so that we can
+    mask a contiguous range of bits whose colours influence/are influenced by
+    storing a byte at a given offset.
+
+    We need to mask out bit subsequences of size 3+8+3=14, i.e. the 8-bits
+    corresponding to the byte being stored, plus the neighbouring 3 bits that
+    influence it/are influenced by it.
+
+    Note that the masked representation has the same size for both offsets (
+    14 bits), but different meaning, since the palette bit is in a different
+    position.
+
+    With this masked representation, we can precompute an edit distance for the
+    pixel changes resulting from all possible HGR byte stores, see
+    make_edit_distance.py.
+
+    The edit distance matrix is encoded by concatenating the 14-bit source
+    and target masked values into a 28-bit pair, which indexes into the
+    edit_distance array to give the corresponding edit distance.
+    """
     NAME = 'HGR'
 
-    # hhhbbbbbbbpPBBBBBBBfff
-    # 0000000011111111111111
-    # 1111111111111100000000
+    # Size of packed representation, consisting of header + body + footer
+    HEADER_BITS = np.uint64(3)
+    # 2x 8-bit screen bytes
+    BODY_BITS = np.uint64(16)
+    FOOTER_BITS = np.uint64(3)
 
-    # Header:
-    #    0000000010000011
-    # Footer:
-    #    1100000100000000
+    # How many bits of packed representation are necessary to determine the
+    # effect of storing a memory byte, e.g. because they influence pixel
+    # colour or are influenced by other bits.
+    MASKED_BITS = np.uint64(14)  # 3 + 8 + 3
 
+    # How many coloured screen pixels we can extract from MASKED_BITS.  Note
+    # that this does not include the last 3 dots represented by the footer,
+    # since we don't have enough information to determine their colour (we
+    # would fall off the end of the 4-bit sliding window)
+    #
+    # From header: 3 bits (2 HGR pixels but might be shifted right by palette)
+    # From body: 7 bits doubled, plus possible shift from palette bit
+    MASKED_DOTS = np.uint64(18)  # 3 + 7 + 7
+
+    # List of bitmasks for extracting the subset of packed data corresponding
+    # to bits influencing/influenced by a given byte offset.  These must be
+    # a contiguous bit mask, i.e. so that after shifting they are enumerated
+    # by 0..2**MASKED_BITS-1
     BYTE_MASKS = [
         np.uint64(0b0000000011111111111111),
         np.uint64(0b1111111111111100000000)
     ]
     BYTE_SHIFTS = [np.uint64(0), np.uint64(8)]
-    MASKED_BITS = np.uint64(14)  # 3 + 8 + 3
 
-    HEADER_BITS = np.uint64(3)
-    # 7-bits doubled, plus possible shift from palette bit
-    BODY_BITS = np.uint64(15)
-    FOOTER_BITS = np.uint64(3)
-
+    # NTSC clock phase at first masked bit
+    #
+    # Each HGR byte offset has the same range of uint14 possible
+    # values and nominal colour pixels, but with different initial
+    # phases:
+    #   even: 0 (1 at start of 3-bit header)
+    #   odd:  2 (3)
     PHASES = [1, 3]
 
     def __init__(self, palette: pal.Palette, main_memory: MemoryMap):
@@ -448,10 +598,11 @@ class HGRBitmap(Bitmap):
 
     @staticmethod
     def _make_header(col: IntOrArray) -> IntOrArray:
-        # Header format is bits 5,6,0 of previous byte
-        # i.e. offsets 16, 17, 11
+        """Extract values to use as header of next column.
 
-        # return (col & np.uint64(0b111 << 16)) >> np.uint64(16)
+        Header format is bits 5,6,0 of previous screen byte
+        i.e. offsets 17, 18, 11 in packed representation
+        """
 
         return (
                 (col & np.uint64(0b1 << 11)) >> np.uint64(9) ^ (
@@ -459,11 +610,13 @@ class HGRBitmap(Bitmap):
         )
 
     def _body(self) -> np.ndarray:
-        # Body is in order
-        # a0 a1 a2 a3 a4 a5 a6 a7 b7 b0 b1 b2 b3 b4 b5 b6
-        # so that a) the header and footer have the same order
-        # across the two byte offsets, and b) so that they
-        # can be extracted as contiguous bit ranges
+        """Pack related screen bytes into an efficient representation.
+
+        Body is of the form:
+            bbbbbbbBAaaaaaaa
+
+        where capital indicates the palette bit.
+        """
 
         even = self.main_memory.page_offset[:, 0::2].astype(np.uint64)
         odd = self.main_memory.page_offset[:, 1::2].astype(np.uint64)
@@ -474,133 +627,46 @@ class HGRBitmap(Bitmap):
 
     @staticmethod
     def _make_footer(col: IntOrArray) -> IntOrArray:
-        # Footer format is bits 7,0,1 of next byte
-        # i.e. offsets 10,3,4
+        """Extract values to use as footer of previous column.
+
+        Footer format is bits 7,0,1 of next screen byte
+        i.e. offsets 10,3,4 in packed representation
+        """
 
         return (
                        (col & np.uint64(0b1 << 10)) >> np.uint64(10) ^ (
                        (col & np.uint64(0b11 << 3)) >> np.uint64(2))
                ) << np.uint64(19)
 
-    # # XXX move to make_data_tables
-    # def _pack(self) -> None:
-    #     """Pack main memory into (28+3)-bit uint64 array"""
-    #
-    #     # 00000000001111111111222222222233
-    #     # 01234567890123456789012345678901
-    #     # AAAABBBBCCCCDDd
-    #     #  AAAABBBBCCCCDd
-    #     #               DDEEEEFFFFGGGGg
-    #     #               dDDEEEEFFFFGGGg
-    #
-    #     # Even, P0: store unshifted (0..14)
-    #     # Even, P1: store shifted << 1 (1..15) (only need 1..14)
-    #
-    #     # Odd, P0: store shifted << 14 (14 .. 28) - set bit 14 as bit 0 of next
-    #     #  byte
-    #     # Odd, p1: store shifted << 15 (15 .. 29) (only need 15 .. 28) - set
-    #     #  bit 13 as bit 0 of next byte
-    #
-    #     # Odd overflow only matters for even, P1
-    #     # - bit 0 is either bit 14 if odd, P0 or bit 13 if odd, P1
-    #     # - but these both come from the undoubled bit 6.
-    #
-    #     main = self.main_memory.page_offset.astype(np.uint64)
-    #
-    #     # Double 7-bit pixel data from a into 14-bit fat pixels, and extend MSB
-    #     # into 15-bits tohandle case when subsequent byte has palette bit set,
-    #     # i.e. is right-shifted by 1 dot.  This only matters for even bytes
-    #     # with P=0 that are followed by odd bytes with P=1; in other cases
-    #     # this extra bit will be overwritten.
-    #     double = (
-    #                  # Bit pos 6
-    #                      ((main & 0x40) << 8) + ((main & 0x40) << 7) + (
-    #                      (main & 0x40) << 6)) + (
-    #                  # Bit pos 5
-    #                      ((main & 0x20) << 6) + ((main & 0x20) << 5)) + (
-    #                  # Bit pos 4
-    #                      ((main & 0x10) << 5) + ((main & 0x10) << 4)) + (
-    #                  # Bit pos 3
-    #                      ((main & 0x08) << 4) + ((main & 0x08) << 3)) + (
-    #                  # Bit pos 2
-    #                      ((main & 0x04) << 3) + ((main & 0x04) << 2)) + (
-    #                  # Bit pos 1
-    #                      ((main & 0x02) << 2) + ((main & 0x02) << 1)) + (
-    #                  # Bit pos 0
-    #                      ((main & 0x01) << 1) + (main & 0x01))
-    #
-    #     a_even = main[:, ::2]
-    #     a_odd = main[:, 1::2]
-    #
-    #     double_even = double[:, ::2]
-    #     double_odd = double[:, 1::2]
-    #
-    #     # Place even offsets at bits 1..15 (P=1) or 0..14 (P=0)
-    #     packed = np.where(a_even & 0x80, double_even << 1, double_even)
-    #
-    #     # Place off offsets at bits 15..27 (P=1) or 14..27 (P=0)
-    #     packed = np.where(
-    #         a_odd & 0x80,
-    #         np.bitwise_xor(
-    #             np.bitwise_and(packed, (2 ** 15 - 1)),
-    #             double_odd << 15
-    #         ),
-    #         np.bitwise_xor(
-    #             np.bitwise_and(packed, (2 ** 14 - 1)),
-    #             double_odd << 14
-    #         )
-    #     )
-    #
-    #     # Patch up even offsets with P=1 with extended bit from previous odd
-    #     # column
-    #
-    #     previous_odd = np.roll(a_odd, 1, axis=1).astype(np.uint64)
-    #
-    #     packed = np.where(
-    #         a_even & 0x80,
-    #         # Truncate to 28-bits and set bit 0 from bit 6 of previous byte
-    #         np.bitwise_xor(
-    #             np.bitwise_and(packed, (2 ** 28 - 2)),
-    #             (previous_odd & (1 << 6)) >> 6
-    #         ),
-    #         # Truncate to 28-bits
-    #         np.bitwise_and(packed, (2 ** 28 - 1))
-    #     )
-    #
-    #     # Append first 3 bits of next even byte so we can correctly
-    #     # decode the effective colours at the end of the 28-bit tuple
-    #     trailing = np.roll(packed, -1, axis=1).astype(np.uint64)
-    #
-    #     packed = np.bitwise_xor(
-    #         packed,
-    #         (trailing & 0b111) << 28
-    #     )
-    #
-    #     self.packed = packed
-
     @staticmethod
     @functools.lru_cache(None)
-    def byte_offset(x_byte: int, is_aux: bool) -> int:
-        """Returns 0..1 offset in packed representation for a given x_byte."""
-        assert not is_aux
+    def byte_offset(page_offset: int, is_aux: bool) -> int:
+        """Returns 0..1 offset in packed representation for page_offset."""
 
-        is_odd = x_byte % 2 == 1
+        assert not is_aux
+        is_odd = page_offset % 2 == 1
 
         return 1 if is_odd else 0
 
     @staticmethod
     @functools.lru_cache(None)
     def _byte_offsets(is_aux: bool) -> Tuple[int, int]:
+        """Return byte offsets within packed data for AUX/MAIN memory."""
+
         assert not is_aux
         return 0, 1
 
     @staticmethod
     @functools.lru_cache(None)
     def _double_pixels(int7: int) -> int:
+        """Each bit 0..6 controls two hires dots.
 
-        # Input bit 6 is repeated 3 times in case the neighbouring byte is
-        # delayed (right-shifted by one dot) due to the palette bit being set.
-        # Care needs to be taken to mask this out when overwriting.
+        Input bit 6 is repeated 3 times in case the neighbouring byte is
+        delayed (right-shifted by one dot) due to the palette bit being set,
+        which means the effect of this byte is "extended" by an extra dot.
+
+        Care needs to be taken to mask this out when overwriting.
+        """
         double = (
             # Bit pos 6
                 ((int7 & 0x40) << 8) + ((int7 & 0x40) << 7) + (
@@ -608,31 +674,37 @@ class HGRBitmap(Bitmap):
                 # Bit pos 5
                 ((int7 & 0x20) << 6) + ((int7 & 0x20) << 5) +
                 # Bit pos 4
-                ((int7 & 0x10) << 5) + ((int7 & 0x10) << 4) + (
-                    # Bit pos 3
-                        ((int7 & 0x08) << 4) + ((int7 & 0x08) << 3) +
-                        # Bit pos 2
-                        ((int7 & 0x04) << 3) + ((int7 & 0x04) << 2) +
-                        # Bit pos 1
-                        ((int7 & 0x02) << 2) + ((int7 & 0x02) << 1) +
-                        # Bit pos 0
-                        ((int7 & 0x01) << 1) + (int7 & 0x01))
+                ((int7 & 0x10) << 5) + ((int7 & 0x10) << 4) +
+                # Bit pos 3
+                ((int7 & 0x08) << 4) + ((int7 & 0x08) << 3) +
+                # Bit pos 2
+                ((int7 & 0x04) << 3) + ((int7 & 0x04) << 2) +
+                # Bit pos 1
+                ((int7 & 0x02) << 2) + ((int7 & 0x02) << 1) +
+                # Bit pos 0
+                ((int7 & 0x01) << 1) + (int7 & 0x01)
         )
 
         return double
 
     @classmethod
     def to_dots(cls, masked_val: int, byte_offset: int) -> int:
+        """Convert masked representation to bit sequence of display dots.
+
+        Packed representation is of the form:
+            ffFbbbbbbbBAaaaaaaaHhh
+
+        where capital indicates the palette bit.
+
+        Each non-palette bit turns on two display dots, with bit 6 repeated
+        a third time.  This may or may not be overwritten by the next byte.
+
+        Turning on the palette bit shifts that byte's dots right by one
+        position.
+        """
 
         # Assert 14-bit representation
         assert (masked_val & (2 ** 14 - 1)) == masked_val
-
-        # Unpack hhHaaaaaaaABbbbbbbbFff
-
-        # --> hhhaaaaaaaaaaaaaabbbb (P=0, P=0, P=0)
-        #     hhhaaaaaaaaaaaaaabbbb (P=1, P=0, P=0)
-        #     hhhhaaaaaaaaaaaaabbbb (P=1, P=1, P=0)
-        #     hhhhaaaaaaaaaaaaaabbb (P=1, P=1, P=1)
 
         # Take top 3 bits from header (plus duplicated MSB) not 4, because if it
         # is palette-shifted then we don't know what is in bit 0
@@ -641,11 +713,11 @@ class HGRBitmap(Bitmap):
         res = cls._double_pixels(h & 0x7f) >> (11 - hp)
 
         if byte_offset == 0:
-            # Offset 0: hhHaaaaaaaABbb
+            # Offset 0: bbBAaaaaaaaHhh
             b = (masked_val >> 3) & 0xff
             bp = (b & 0x80) >> 7
         else:
-            # Offset 1: aaABbbbbbbbFff
+            # Offset 1: ffFbbbbbbbBAaa
             bp = (masked_val >> 3) & 0x01
             b = ((masked_val >> 4) & 0x7f) ^ (bp << 7)
 
@@ -664,7 +736,6 @@ class HGRBitmap(Bitmap):
         res ^= cls._double_pixels(f & 0x7f) << (17 + fp)
         return res & (2 ** 21 - 1)
 
-    # XXX test
     @staticmethod
     def masked_update(
             byte_offset: int,
@@ -694,37 +765,99 @@ class HGRBitmap(Bitmap):
 
 
 class DHGRBitmap(Bitmap):
-    # NOTE: See https://github.com/numpy/numpy/issues/2524 and related issues
-    # for why we have to cast things explicitly to np.uint64 - type promotion
-    # to uint64 is broken in numpy :(
+    """Packed bitmap representation of DHGR screen memory.
+
+    The DHGR display encodes 7 pixels across interleaved 4-byte sequences
+    of AUX and MAIN memory, as follows:
+
+        PBBBAAAA PDDCCCCB PFEEEEDD PGGGGFFF
+        Aux N    Main N   Aux N+1  Main N+1  (N even)
+
+    Where A..G are the pixels, and P represents the (unused) palette bit.
+
+    This layout makes more sense when written as a (little-endian) 32-bit
+    integer:
+
+        33222222222211111111110000000000 <- bit pos in uint32
+        10987654321098765432109876543210
+        PGGGGFFFPFEEEEDDPDDCCCCBPBBBAAAA
+
+    i.e. apart from the palette bits this is a linear ordering of pixels,
+    when read from LSB to MSB (i.e. right-to-left).  i.e. the screen layout
+    order of bits is opposite to the usual binary representation ordering.
+
+    We can simplify things by stripping out the palette bit and packing
+    down to a 28-bit integer representation:
+
+        33222222222211111111110000000000 <- bit pos in uint32
+        10987654321098765432109876543210
+
+            GGGGFFFFEEEEDDDDCCCCBBBBAAAA <- pixel A..G
+            3210321032103210321032103210 <- bit pos in A..G pixel
+
+            3333333222222211111110000000 <- byte offset 0.3
+
+    Since our colour artifact model (see colours.py) uses a sliding 4-bit window
+    onto the dot string, we need to also include a 3-bit header and footer
+    to account for the influence from/on neighbouring bytes, i.e. adjacent
+    packed values.  These are just the low/high 3 bits of the 28-bit body of
+    those neighbouring columns.
+
+    This gives a 34-bit packed representation that is sufficient to compute
+    the effects (on pixel colours) of storing a byte at one of the 0..3 offsets.
+
+    Note that this representation is also 1:1 with the actual displayed
+    DHGR dots.  The mapping to pixel colours follows the DHGRColours
+    bitmap, see colours.py.
+
+    Because the packed representation is contiguous, we need to mask out bit
+    subsequences of size 3+7+3=13, i.e. the 7-bits corresponding to the
+    byte being stored, plus the neighbouring 3 bits that influence it/are
+    influenced by it.
+
+    With this masked representation, we can precompute an edit distance for the
+    pixel changes resulting from all possible DHGR byte stores, see
+    make_edit_distance.py.
+
+    The edit distance matrix is encoded by concatenating the 13-bit source
+    and target masked values into a 26-bit pair, which indexes into the
+    edit_distance array to give the corresponding edit distance.
+    """
 
     NAME = 'DHGR'
 
-    # 3-bit header + 28-bit body + 3-bit footer
-    BYTE_MASKS = [
-        #    3333333222222211111110000000    <- byte 0.3
-        #
-        #           3333222222222211111111110000000000 <- bit pos in uint64
-        #           3210987654321098765432109876543210
-        #           tttGGGGFFFFEEEEDDDDCCCCBBBBAAAAhhh <- pixel A..G
-        #              3210321032103210321032103210    <- bit pos in A..G pixel
-        np.uint64(0b0000000000000000000001111111111111),  # byte 0 int13 mask
-        np.uint64(0b0000000000000011111111111110000000),  # byte 1 int13 mask
-        np.uint64(0b0000000111111111111100000000000000),  # byte 2 int13 mask
-        np.uint64(0b1111111111111000000000000000000000),  # byte 3 int13 mask
-    ]
-
-    # How much to right-shift bits after masking to bring into int13 range
-    BYTE_SHIFTS = [np.uint64(0), np.uint64(7), np.uint64(14), np.uint64(21)]
-
+    # Packed representation is 3 + 28 + 3 = 34 bits
     HEADER_BITS = np.uint64(3)
     BODY_BITS = np.uint64(28)
     FOOTER_BITS = np.uint64(3)
 
-    MASKED_BITS = np.uint64(13)
+    # Masked representation selecting the influence of each byte offset
+    MASKED_BITS = np.uint64(13)  # 7-bit body + 3-bit header + 3-bit footer
+
+    # Masking is 1:1 with screen dots, but we can't compute the colour of the
+    # last 3 dots because we fall off the end of the 4-bit sliding window
+    MASKED_DOTS = np.uint64(10)
+
+    # 3-bit header + 28-bit body + 3-bit footer
+    BYTE_MASKS = [
+        #           3333222222222211111111110000000000 <- bit pos in uint64
+        #           3210987654321098765432109876543210
+        #           tttGGGGFFFFEEEEDDDDCCCCBBBBAAAAhhh <- pixel A..G
+        #              3210321032103210321032103210    <- bit pos in A..G pixel
+        #
+        #              3333333222222211111110000000    <- byte offset 0.3
+        np.uint64(0b0000000000000000000001111111111111),  # byte 0 uint13 mask
+        np.uint64(0b0000000000000011111111111110000000),  # byte 1 uint13 mask
+        np.uint64(0b0000000111111111111100000000000000),  # byte 2 uint13 mask
+        np.uint64(0b1111111111111000000000000000000000),  # byte 3 uint13 mask
+    ]
+
+    # How much to right-shift bits after masking, to bring into uint13 range
+    BYTE_SHIFTS = [np.uint64(0), np.uint64(7), np.uint64(14), np.uint64(21)]
 
     # NTSC clock phase at first masked bit
-    # Each DHGR byte offset has the same range of int13 possible
+    #
+    # Each DHGR byte offset has the same range of uint13 possible
     # values and nominal colour pixels, but with different initial
     # phases:
     # AUX 0: 0 (1 at start of 3-bit header)
@@ -733,18 +866,26 @@ class DHGRBitmap(Bitmap):
     # MAIN 1: 1 (2)
     PHASES = [1, 0, 3, 2]
 
+    @staticmethod
+    def _make_header(col: IntOrArray) -> IntOrArray:
+        """Extract upper 3 bits of body for header of next column."""
+        return (col & np.uint64(0b111 << 28)) >> np.uint64(28)
+
     def _body(self) -> np.ndarray:
+        """Pack related screen bytes into an efficient representation.
+
+        For DHGR we first strip off the (unused) palette bit to produce
+        7-bit values, then interleave aux and main memory columns and pack
+        these 7-bit values into 28-bits.  This sequentially encodes 7 4-bit
+        DHGR pixels, which is the "repeating unit" of the DHGR screen, and
+        in a form that is convenient to operate on.
+
+        We also shift to make room for the 3-bit header.
+        """
+
         # Palette bit is unused for DHGR so mask it out
         aux = (self.aux_memory.page_offset & 0x7f).astype(np.uint64)
         main = (self.main_memory.page_offset & 0x7f).astype(np.uint64)
-
-        # XXX update
-        # Interleave aux and main memory columns and pack 7-bit masked values
-        # into a 28-bit value, with 3-bit header and footer.  This
-        # sequentially encodes 7 4-bit DHGR pixels, together with the
-        # neighbouring 3 bits that are necessary to decode artifact colours.
-        #
-        # See make_data_tables.py for more discussion about this representation.
 
         return (
                 (aux[:, 0::2] << 3) +
@@ -754,20 +895,16 @@ class DHGRBitmap(Bitmap):
         )
 
     @staticmethod
-    def _make_header(col: IntOrArray) -> IntOrArray:
-        """Extract upper 3 bits of body for header of next column."""
-        return (col & np.uint64(0b111 << 28)) >> np.uint64(28)
-
-    @staticmethod
     def _make_footer(col: IntOrArray) -> IntOrArray:
         """Extract lower 3 bits of body for footer of previous column."""
         return (col & np.uint64(0b111 << 3)) << np.uint64(28)
 
     @staticmethod
     @functools.lru_cache(None)
-    def byte_offset(x_byte: int, is_aux: bool) -> int:
-        """Returns 0..3 packed byte offset for a given x_byte and is_aux"""
-        is_odd = x_byte % 2 == 1
+    def byte_offset(page_offset: int, is_aux: bool) -> int:
+        """Returns 0..3 packed byte offset for a given page_offset and is_aux"""
+
+        is_odd = page_offset % 2 == 1
         if is_aux:
             if is_odd:
                 return 2
@@ -781,6 +918,8 @@ class DHGRBitmap(Bitmap):
     @staticmethod
     @functools.lru_cache(None)
     def _byte_offsets(is_aux: bool) -> Tuple[int, int]:
+        """Return byte offsets within packed data for AUX/MAIN memory."""
+
         if is_aux:
             offsets = (0, 2)
         else:
@@ -790,8 +929,11 @@ class DHGRBitmap(Bitmap):
 
     @classmethod
     def to_dots(cls, masked_val: int, byte_offset: int) -> int:
-        # For DHGR the 13-bit masked value is already a 13-bit dot sequence
-        # so no need to transform it.
+        """Convert masked representation to bit sequence of display dots.
+
+        For DHGR the 13-bit masked value is already a 13-bit dot sequence
+        so no need to transform it.
+        """
 
         return masked_val
 
@@ -804,7 +946,6 @@ class DHGRBitmap(Bitmap):
 
         Does not patch up headers/footers of neighbouring columns.
         """
-
         # Mask out 7-bit value where update will go
         masked_value = old_value & (
             ~np.uint64(0x7f << (7 * byte_offset + 3)))

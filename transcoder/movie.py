@@ -76,6 +76,7 @@ class Movie:
 
                     if aux:
                         aux_seq = self.video.encode_frame(aux, is_aux=True)
+
             # au has range -15 .. 16 (step=1)
             # Tick cycles are units of 2
             tick = au * 2  # -30 .. 32 (step=2)
@@ -86,18 +87,20 @@ class Movie:
 
             yield opcodes.TICK_OPCODES[(tick, page)](content, offsets)
 
-    def _emit_bytes(self, _op):
-        """
+    def _emit_bytes(self, _op: opcodes.Opcode) -> Iterable[int]:
+        """Emit compiled bytes corresponding to a player opcode.
 
-        :param _op:
-        :return:
+        Also tracks byte stream position.
         """
         for b in self.state.emit(_op):
             yield b
             self.stream_pos += 1
 
     def emit_stream(self, ops: Iterable[opcodes.Opcode]) -> Iterator[int]:
-        """
+        """Emit compiled byte stream corresponding to opcode stream.
+
+        Inserts padding opcodes at 2KB stream boundaries, to instruct player
+        to manage the TCP socket buffer.
 
         :param ops:
         :return:
@@ -124,7 +127,7 @@ class Movie:
         yield from self.done()
 
     def done(self) -> Iterator[int]:
-        """Terminate opcode stream.
+        """Terminate byte stream by emitting terminal opcode and padding to 2KB.
 
         :return:
         """

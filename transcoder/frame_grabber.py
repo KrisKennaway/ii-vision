@@ -54,7 +54,7 @@ class FileFrameGrabber(FrameGrabber):
         return "P%d" % self.palette.value
 
     def frames(self) -> Iterator[screen.MemoryMap]:
-        """Encode frame to HGR using bmp2dhr.
+        """Encode frame to (D)HGR using bmp2dhr.
 
         We do the encoding in a background thread to parallelize.
         """

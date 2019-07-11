@@ -9,12 +9,18 @@ import colours
 from palette import Palette
 
 
+def binary(a):
+    return np.vectorize("{:032b}".format)(a)
+
+
 class TestDHGRBitmap(unittest.TestCase):
     def setUp(self) -> None:
         self.aux = screen.MemoryMap(screen_page=1)
         self.main = screen.MemoryMap(screen_page=1)
 
     def test_make_header(self):
+        """Header extracted correctly from packed representation."""
+
         self.assertEqual(
             0b100,
             screen.DHGRBitmap._make_header(
@@ -22,6 +28,8 @@ class TestDHGRBitmap(unittest.TestCase):
         )
 
     def test_make_footer(self):
+        """Footer extracted correctly from packed representation."""
+
         self.assertEqual(
             0b1010000000000000000000000000000000,
             screen.DHGRBitmap._make_footer(
@@ -29,6 +37,8 @@ class TestDHGRBitmap(unittest.TestCase):
         )
 
     def test_pixel_packing_offset_0(self):
+        """Screen byte packing happens correctly at offset 0."""
+
         #                              PBBBAAAA
         self.aux.page_offset[0, 0] = 0b11110101
         #                               PDDCCCCB
@@ -57,6 +67,8 @@ class TestDHGRBitmap(unittest.TestCase):
         self.assertEqual(2, np.count_nonzero(dhgr.packed))
 
     def test_pixel_packing_offset_1(self):
+        """Screen byte packing happens correctly at offset 1."""
+
         #                              PBBBAAAA
         self.aux.page_offset[0, 2] = 0b11110101
         #                               PDDCCCCB
@@ -90,6 +102,8 @@ class TestDHGRBitmap(unittest.TestCase):
         self.assertEqual(3, np.count_nonzero(dhgr.packed))
 
     def test_pixel_packing_offset_127(self):
+        """Screen byte packing happens correctly at offset 127."""
+
         #                              PBBBAAAA
         self.aux.page_offset[0, 254] = 0b11110101
         #                               PDDCCCCB
@@ -118,16 +132,22 @@ class TestDHGRBitmap(unittest.TestCase):
         self.assertEqual(2, np.count_nonzero(dhgr.packed))
 
     def test_byte_offset(self):
+        """Test the byte_offset behaviour."""
+
         self.assertEqual(0, screen.DHGRBitmap.byte_offset(0, is_aux=True))
         self.assertEqual(1, screen.DHGRBitmap.byte_offset(0, is_aux=False))
         self.assertEqual(2, screen.DHGRBitmap.byte_offset(1, is_aux=True))
         self.assertEqual(3, screen.DHGRBitmap.byte_offset(1, is_aux=False))
 
     def test_byte_offsets(self):
+        """Test the _byte_offsets behaviour."""
+
         self.assertEqual((0, 2), screen.DHGRBitmap._byte_offsets(is_aux=True))
         self.assertEqual((1, 3), screen.DHGRBitmap._byte_offsets(is_aux=False))
 
     def test_mask_and_shift_data(self):
+        """Verify that mask_and_shift_data extracts the right bit positions."""
+
         int13_max = np.uint64(2 ** 13 - 1)
         int34_max = np.uint64(2 ** 34 - 1)
 
@@ -152,6 +172,8 @@ class TestDHGRBitmap(unittest.TestCase):
             )
 
     def test_masked_update(self):
+        """Verify that masked_update updates the expected bit positions."""
+
         self.assertEqual(
             0b0000000000000000000000001111111000,
             screen.DHGRBitmap.masked_update(
@@ -204,6 +226,8 @@ class TestDHGRBitmap(unittest.TestCase):
         ))
 
     def test_apply(self):
+        """Test that apply() correctly updates neighbours."""
+
         dhgr = screen.DHGRBitmap(
             main_memory=self.main, aux_memory=self.aux, palette=Palette.NTSC)
 
@@ -292,6 +316,8 @@ class TestDHGRBitmap(unittest.TestCase):
             dhgr.packed[12, 17])
 
     def test_fix_array_neighbours(self):
+        """Test that _fix_array_neighbours DTRT after masked_update."""
+
         dhgr = screen.DHGRBitmap(
             main_memory=self.main, aux_memory=self.aux, palette=Palette.NTSC)
 
@@ -326,15 +352,13 @@ class TestDHGRBitmap(unittest.TestCase):
         )
 
 
-def binary(a):
-    return np.vectorize("{:032b}".format)(a)
-
-
 class TestHGRBitmap(unittest.TestCase):
     def setUp(self) -> None:
         self.main = screen.MemoryMap(screen_page=1)
 
     def test_make_header(self):
+        """Header extracted correctly from packed representation."""
+
         self.assertEqual(
             0b111,
             screen.HGRBitmap._make_header(
@@ -349,6 +373,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_make_footer(self):
+        """Footer extracted correctly from packed representation."""
+
         self.assertEqual(
             0b1110000000000000000000,
             screen.HGRBitmap._make_footer(
@@ -363,6 +389,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_pixel_packing_p0_p0(self):
+        """Screen byte packing happens correctly with P=0, P=0 palette bits."""
+
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b01000011
         #                               PGGFFEED
@@ -378,6 +406,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_pixel_packing_p0_p1(self):
+        """Screen byte packing happens correctly with P=0, P=1 palette bits."""
+
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b01000011
         #                               PGGFFEED
@@ -393,6 +423,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_pixel_packing_p1_p0(self):
+        """Screen byte packing happens correctly with P=1, P=0 palette bits."""
+
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b11000011
         #                               PGGFFEED
@@ -408,6 +440,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_pixel_packing_p1_p1(self):
+        """Screen byte packing happens correctly with P=1, P=1 palette bits."""
+
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b11000011
         #                               PGGFFEED
@@ -422,8 +456,8 @@ class TestHGRBitmap(unittest.TestCase):
             want, got, "\n%s\n%s" % (binary(want), binary(got))
         )
 
-    def test_masked_update(self):
-
+    def test_apply(self):
+        """Test that header, body and footer are placed correctly."""
         hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
 
         hgr.apply(0, 0, False, 0b11000011)
@@ -436,7 +470,25 @@ class TestHGRBitmap(unittest.TestCase):
             want, got, "\n%s\n%s" % (binary(want), binary(got))
         )
 
+        # Now check with 4 consecutive bytes, i.e. even/odd pair plus the
+        # neighbouring header/footer.
+        hgr = screen.HGRBitmap(main_memory=self.main, palette=Palette.NTSC)
+
+        hgr.apply(1, 197, False, 128)
+        hgr.apply(1, 198, False, 143)
+        hgr.apply(1, 199, False, 192)
+        hgr.apply(1, 200, False, 128)
+
+        want = 0b0011000000110001111100
+        got = hgr.packed[1, 199 // 2]
+
+        self.assertEqual(
+            want, got, "\n%s\n%s" % (binary(want), binary(got))
+        )
+
     def test_double_pixels(self):
+        """Verify behaviour of _double_pixels."""
+
         want = 0b111001100110011
         got = screen.HGRBitmap._double_pixels(0b1010101)
 
@@ -445,6 +497,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_to_dots_offset_0(self):
+        """Verify to_dots behaviour with byte_offset=0"""
+
         # Header has P=0, Body has P=0
         want = 0b00000000000000000111
         got = screen.HGRBitmap.to_dots(0b00000000000011, 0)
@@ -510,6 +564,8 @@ class TestHGRBitmap(unittest.TestCase):
         )
 
     def test_to_dots_offset_1(self):
+        """Verify to_dots behaviour with byte_offset=1"""
+
         # Header has P=0, Body has P=0
         want = 0b000000000000000000111
         got = screen.HGRBitmap.to_dots(0b00000000000011, 1)
@@ -576,6 +632,8 @@ class TestHGRBitmap(unittest.TestCase):
 
 
 class TestNominalColours(unittest.TestCase):
+    """Tests that screen pixel values produce expected colour sequences."""
+
     def setUp(self) -> None:
         self.main = screen.MemoryMap(screen_page=1)
 
@@ -658,10 +716,12 @@ class TestNominalColours(unittest.TestCase):
                 init_phase=screen.HGRBitmap.PHASES[1])
         )
 
-    # See Figure 8.15 from Sather, "Understanding the Apple IIe"
+    # The following tests check for the extended/truncated behaviour across
+    # byte boundaries when mismatching palette bits.   See Figure 8.15 from
+    # Sather, "Understanding the Apple IIe"
 
     def test_nominal_colours_sather_even_1(self):
-        # Extend violet into light blue
+        """Extend violet into light blue."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b01000000
@@ -702,7 +762,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_even_2(self):
-        # Cut off blue with black to produce dark blue
+        """Cut off blue with black to produce dark blue."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b11000000
@@ -742,7 +802,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_even_3(self):
-        # Cut off blue with green to produce aqua
+        """Cut off blue with green to produce aqua."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b11000000
@@ -782,7 +842,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_even_4(self):
-        # Cut off white with black to produce pink
+        """Cut off white with black to produce pink."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b11100000
@@ -822,10 +882,10 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_even_5(self):
-        # Cut off orange-black with green to produce bright green
+        """Cut off orange-black with green to produce bright green.
 
-        # "Bright" here is because the sequence of pixels has high intensity
-        # Orange-Orange-Yellow-Yellow-Green-Green
+        "Bright" here is because the sequence of pixels has high intensity
+        Orange-Orange-Yellow-Yellow-Green-Green."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 0] = 0b10100000
@@ -865,7 +925,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_odd_1(self):
-        # Extend green into light brown
+        """Extend green into light brown."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 1] = 0b01000000
@@ -905,7 +965,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_odd_2(self):
-        # Cut off orange with black to produce dark brown
+        """Cut off orange with black to produce dark brown."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 1] = 0b11000000
@@ -945,7 +1005,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_odd_3(self):
-        # Cut off orange with violet to produce pink
+        """Cut off orange with violet to produce pink."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 1] = 0b11000000
@@ -985,7 +1045,7 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_odd_4(self):
-        # Cut off white with black to produce aqua
+        """Cut off white with black to produce aqua."""
 
         #                               PDCCBBAA
         self.main.page_offset[0, 1] = 0b11100000
@@ -1025,10 +1085,11 @@ class TestNominalColours(unittest.TestCase):
         )
 
     def test_nominal_colours_sather_odd_5(self):
-        # Cut off blue-black with violet to produce bright violet
+        """Cut off blue-black with violet to produce bright violet.
 
-        # "Bright" here is because the sequence of pixels has high intensity
-        # Blue-Blue-Light Blue-Light Blue-Violet-Violet
+        "Bright" here is because the sequence of pixels has high intensity
+        Blue-Blue-Light Blue-Light Blue-Violet-Violet.
+        """
 
         #                               PDCCBBAA
         self.main.page_offset[0, 1] = 0b10100000

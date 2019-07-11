@@ -14,7 +14,7 @@ from video_mode import VideoMode
 
 
 class Video:
-    """Apple II screen memory map encoding a bitmapped frame."""
+    """Encodes sequence of images into prioritized screen byte changes."""
 
     CLOCK_SPEED = 1024 * 1024  # type: int
 
@@ -58,6 +58,8 @@ class Video:
             self.aux_update_priority = np.zeros((32, 256), dtype=np.int)
 
     def tick(self, ticks: int) -> bool:
+        """Keep track of when it is time for a new image frame."""
+
         if ticks >= (self.ticks_per_frame * self.frame_number):
             self.frame_number += 1
             return True
@@ -68,7 +70,8 @@ class Video:
             target: screen.MemoryMap,
             is_aux: bool,
     ) -> Iterator[opcodes.Opcode]:
-        """Update to match content of frame within provided budget."""
+        """Converge towards target frame in priority order of edit distance."""
+
         if is_aux:
             memory_map = self.aux_memory_map
             update_priority = self.aux_update_priority
@@ -114,7 +117,6 @@ class Video:
             )
 
         diff_weights = target_pixelmap.diff_weights(self.pixelmap, is_aux)
-
         # Don't bother storing into screen holes
         diff_weights[screen.SCREEN_HOLES] = 0
 
@@ -122,8 +124,6 @@ class Video:
         # with new frame
         update_priority[diff_weights == 0] = 0
         update_priority += diff_weights
-
-        assert np.count_nonzero(update_priority[screen.SCREEN_HOLES]) == 0
 
         priorities = self._heapify_priorities(update_priority)
 
@@ -172,13 +172,12 @@ class Video:
                     is_aux
             ):
                 assert o != offset
-
                 assert not screen.SCREEN_HOLES[page, o], (
                         "Attempted to store into screen hole at (%d, %d)" % (
                     page, o))
 
                 if update_priority[page, o] == 0:
-                    # print("Skipping page=%d, offset=%d" % (page, o))
+                    # Someone already resolved this diff.
                     continue
 
                 # Make sure we don't end up considering this (page, offset)
@@ -195,7 +194,7 @@ class Video:
                     byte_offset, old_packed, content)
 
                 # Update priority for the offset we're emitting
-                update_priority[page, o] = p  # 0
+                update_priority[page, o] = p
 
                 source.page_offset[page, o] = content
                 self.pixelmap.apply(page, o, is_aux, content)
@@ -205,7 +204,7 @@ class Video:
                     # heap in case we can get back to fixing it exactly
                     # during this frame.  Otherwise we'll get to it later.
                     heapq.heappush(
-                        priorities, (-p, random.getrandbits(16), page, o))
+                        priorities, (-p, random.getrandbits(8), page, o))
 
                 offsets.append(o)
                 if len(offsets) == 3:
@@ -216,19 +215,30 @@ class Video:
                 offsets.append(offsets[0])
             yield (page + 32, content, offsets)
 
-        # TODO: there is still a bug causing residual diffs when we have
-        # apparently run out of work to do
+        # # TODO: there is still a bug causing residual diffs when we have
+        # # apparently run out of work to do
         if not np.array_equal(source.page_offset, target.page_offset):
             diffs = np.nonzero(source.page_offset != target.page_offset)
             for i in range(len(diffs[0])):
                 diff_p = diffs[0][i]
                 diff_o = diffs[1][i]
 
+                # For HGR, 0x00 or 0x7f may be visually equivalent to the same
+                # bytes with high bit set (depending on neighbours), so skip
+                # them
+                if (source.page_offset[diff_p, diff_o] & 0x7f) == 0 and \
+                        (target.page_offset[diff_p, diff_o] & 0x7f) == 0:
+                    continue
+
+                if (source.page_offset[diff_p, diff_o] & 0x7f) == 0x7f and \
+                        (target.page_offset[diff_p, diff_o] & 0x7f) == 0x7f:
+                    continue
+
                 print("Diff at (%d, %d): %d != %d" % (
                     diff_p, diff_o, source.page_offset[diff_p, diff_o],
                     target.page_offset[diff_p, diff_o]
                 ))
-            # assert False
+                # assert False
 
         # If we run out of things to do, pad forever
         content = target.page_offset[0, 0]
@@ -237,6 +247,10 @@ class Video:
 
     @staticmethod
     def _heapify_priorities(update_priority: np.array) -> List:
+        """Build priority queue of (page, offset) ordered by update priority."""
+
+        # Use numpy vectorization to efficiently compute the list of
+        # (priority, random nonce, page, offset) tuples to be heapified.
         pages, offsets = update_priority.nonzero()
         priorities = [tuple(data) for data in np.stack((
             -update_priority[pages, offsets],
@@ -251,13 +265,17 @@ class Video:
 
     _OFFSETS = np.arange(256)
 
-    def _compute_error(self, page, content, target_pixelmap, old_error,
+    def _compute_error(self, page, content, target_pixelmap, diff_weights,
                        content_deltas, is_aux):
+        """Build priority queue of other offsets at which to store content.
+
+        Ordered by offsets which are closest to the target content value.
+        """
         # TODO: move this up into parent
         delta_screen = content_deltas.get(content)
         if delta_screen is None:
             delta_screen = target_pixelmap.compute_delta(
-                content, old_error, is_aux)
+                content, diff_weights, is_aux)
             content_deltas[content] = delta_screen
 
         delta_page = delta_screen[page]
@@ -266,7 +284,7 @@ class Video:
         priorities = delta_page[cond]
 
         deltas = [
-            (priorities[i], random.getrandbits(16), candidate_offsets[i])
+            (priorities[i], random.getrandbits(8), candidate_offsets[i])
             for i in range(len(candidate_offsets))
         ]
         heapq.heapify(deltas)

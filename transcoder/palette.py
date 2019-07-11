@@ -1,3 +1,5 @@
+"""RGB palette values for rendering NominalColour pixels."""
+
 import enum
 from typing import Dict, Type
 
@@ -14,7 +16,8 @@ def rgb(r, g, b):
 
 
 class Palette(enum.Enum):
-    """BMP2DHR palette numbers"""
+    """BMP2DHR palette numbers."""
+
     UNKNOWN = -1
     IIGS = 0
     NTSC = 5

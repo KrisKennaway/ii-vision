@@ -67,11 +67,11 @@ class TestVideo(unittest.TestCase):
 
         diff = target_pixelmap.diff_weights(v.pixelmap, is_aux=True)
 
-        # Expect byte 0 to map to 0b01111111 01101101 XXX
+        # Masked offset 0 changes from 0001111111000 to 0001101101000
         expect0 = target_pixelmap.edit_distances(pal.ID)[0][
             0b00011111110000001101101000]
 
-        # Expect byte 2 to map to 0b000101010100 000011011000
+        # Masked offset 2 changes from 0001010101000 to 0000110110000
         expect2 = target_pixelmap.edit_distances(pal.ID)[2][
             0b00010101010000000110110000]
 

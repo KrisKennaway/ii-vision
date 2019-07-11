@@ -15,7 +15,8 @@ class TestMakeDataTables(unittest.TestCase):
         pixels = (HGRColours.BLACK, HGRColours.WHITE, HGRColours.ORANGE)
         self.assertEqual("0FC", make_data_tables.pixel_string(pixels))
 
-    def test_edit_distances(self):
+    def test_edit_distances_dhgr(self):
+        """Assert invariants and symmetries of the edit distance matrices."""
         for p in PALETTES:
             ed = screen.DHGRBitmap.edit_distances(p)
             print(p)
@@ -52,6 +53,8 @@ class TestMakeDataTables(unittest.TestCase):
                         self.assertGreaterEqual(ed[ph][(i << 13) + j], 0)
 
     def test_edit_distances_hgr(self):
+        """Assert invariants and symmetries of the edit distance matrices."""
+
         for p in PALETTES:
             ed = screen.HGRBitmap.edit_distances(p)
             print(p)
@@ -61,13 +64,17 @@ class TestMakeDataTables(unittest.TestCase):
             cnt = 0
             for ph in range(2):
 
-                # Only zero entries should be on diagonal, i.e. of form
+                # TODO: for HGR this invariant isn't true, all-0 and all-1
+                #  values for header/footer/body with/without palette bit can
+                #  also have zero difference
+                # # Only zero entries should be on diagonal, i.e. of form
                 # # i << 14 + i
                 # zeros = np.arange(len(ed[ph]))[ed[ph] == 0]
                 # for z in zeros:
                 #     z1 = z & (2**14-1)
                 #     z2 = (z >> 14) & (2**14-1)
-                #     self.assertEqual(z1, z2)
+                #     if z1 != z2:
+                #         self.assertEqual(z1, z2)
 
                 # Assert that matrix is symmetrical
                 for i in range(2 ** 14):
