@@ -1,82 +1,98 @@
+import sys
 import unittest
 
-from colours import DHGRColours
+import numpy as np
+from etaprogress.progress import ProgressBar
+
 import make_data_tables
+import screen
+from colours import HGRColours
+from palette import PALETTES
 
 
 class TestMakeDataTables(unittest.TestCase):
     def test_pixel_string(self):
-        pixels = (DHGRColours.BLACK, DHGRColours.WHITE, DHGRColours.ORANGE)
+        pixels = (HGRColours.BLACK, HGRColours.WHITE, HGRColours.ORANGE)
         self.assertEqual("0FC", make_data_tables.pixel_string(pixels))
 
-    def test_pixels_influenced_by_byte_index(self):
-        pixels = "CB00000"
-        self.assertEqual(
-            "CB",
-            make_data_tables.pixels_influenced_by_byte_index(pixels, 0)
-        )
+    def test_edit_distances_dhgr(self):
+        """Assert invariants and symmetries of the edit distance matrices."""
+        for p in PALETTES:
+            ed = screen.DHGRBitmap.edit_distances(p)
+            print(p)
 
-        pixels = "CBA9000"
-        self.assertEqual(
-            "BA9",
-            make_data_tables.pixels_influenced_by_byte_index(pixels, 1)
-        )
+            bar = ProgressBar((4 * 2 ** 13 * (2 ** 13 - 1)) / 2, max_width=80)
 
-    def test_int28_to_pixels(self):
-        self.assertEqual(
-            (
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-                DHGRColours.YELLOW,
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-                DHGRColours.BLACK,
-            ),
-            tuple(
-                make_data_tables.int28_to_pixels(
-                    0b00000000000000000000111000000000)
-            )
-        )
+            cnt = 0
+            for ph in range(3):
 
-        self.assertEqual(
-            (
-                DHGRColours.BLACK,
-                DHGRColours.WHITE,
-                DHGRColours.BLACK,
-                DHGRColours.WHITE,
-                DHGRColours.BLACK,
-                DHGRColours.WHITE,
-                DHGRColours.BLACK,
-            ),
-            tuple(
-                make_data_tables.int28_to_pixels(
-                    0b0000111100001111000011110000)
-            )
-        )
+                # Only zero entries should be on diagonal, i.e. of form
+                # i << 13 + i
+                zeros = np.arange(len(ed[ph]))[ed[ph] == 0]
+                for z in zeros:
+                    z1 = z & (2 ** 13 - 1)
+                    z2 = (z >> 13) & (2 ** 13 - 1)
+                    self.assertEqual(z1, z2)
 
-    def test_map_to_mask32(self):
-        byte_mask32 = [
-            # 33222222222211111111110000000000 <- bit pos in uint32
-            # 10987654321098765432109876543210
-            # 0000GGGGFFFFEEEEDDDDCCCCBBBBAAAA <- pixel A..G
-            #     3210321032103210321032103210  <- bit pos in A..G pixel
-            0b00000000000000000000000011111111,  # byte 0 influences A,B
-            0b00000000000000001111111111110000,  # byte 1 influences B,C,D
-            0b00000000111111111111000000000000,  # byte 2 influences D,E,F
-            0b00001111111100000000000000000000,  # byte 3 influences F,G
-        ]
-        int8_max = 2 ** 8 - 1
-        int12_max = 2 ** 12 - 1
+                # Assert that matrix is symmetrical
+                for i in range(2 ** 13):
+                    for j in range(i):
+                        cnt += 1
 
-        self.assertEqual(
-            make_data_tables.map_int8_to_mask32_0(int8_max), byte_mask32[0])
-        self.assertEqual(
-            make_data_tables.map_int12_to_mask32_1(int12_max), byte_mask32[1])
-        self.assertEqual(
-            make_data_tables.map_int12_to_mask32_2(int12_max), byte_mask32[2])
-        self.assertEqual(
-            make_data_tables.map_int8_to_mask32_3(int8_max), byte_mask32[3])
+                        if cnt % 10000 == 0:
+                            bar.numerator = cnt
+                            print(bar, end='\r')
+                            sys.stdout.flush()
+
+                        self.assertEqual(
+                            ed[ph][(i << 13) + j],
+                            ed[ph][(j << 13) + i],
+                        )
+
+                        # Matrix is positive definite
+                        self.assertGreaterEqual(ed[ph][(i << 13) + j], 0)
+
+    def test_edit_distances_hgr(self):
+        """Assert invariants and symmetries of the edit distance matrices."""
+
+        for p in PALETTES:
+            ed = screen.HGRBitmap.edit_distances(p)
+            print(p)
+
+            bar = ProgressBar((4 * 2 ** 14 * (2 ** 14 - 1)) / 2, max_width=80)
+
+            cnt = 0
+            for ph in range(2):
+
+                # TODO: for HGR this invariant isn't true, all-0 and all-1
+                #  values for header/footer/body with/without palette bit can
+                #  also have zero difference
+                # # Only zero entries should be on diagonal, i.e. of form
+                # # i << 14 + i
+                # zeros = np.arange(len(ed[ph]))[ed[ph] == 0]
+                # for z in zeros:
+                #     z1 = z & (2**14-1)
+                #     z2 = (z >> 14) & (2**14-1)
+                #     if z1 != z2:
+                #         self.assertEqual(z1, z2)
+
+                # Assert that matrix is symmetrical
+                for i in range(2 ** 14):
+                    for j in range(i):
+                        cnt += 1
+
+                        if cnt % 10000 == 0:
+                            bar.numerator = cnt
+                            print(bar, end='\r')
+                            sys.stdout.flush()
+
+                        self.assertEqual(
+                            ed[ph][(i << 14) + j],
+                            ed[ph][(j << 14) + i],
+                        )
+
+                        # Matrix is positive definite
+                        self.assertGreaterEqual(ed[ph][(i << 14) + j], 0)
 
 
 if __name__ == '__main__':

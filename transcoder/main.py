@@ -1,4 +1,4 @@
-"""Transcodes an input video file to ][Vision format."""
+"""Transcodes an input video file to ][-Vision format."""
 
 import argparse
 
@@ -7,7 +7,7 @@ import palette
 import video_mode
 
 parser = argparse.ArgumentParser(
-    description='Transcode videos to ][Vision format.')
+    description='Transcode videos to ][-Vision format.')
 parser.add_argument(
     'input', help='Path to input video file.')
 parser.add_argument(

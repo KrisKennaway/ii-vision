@@ -4,5 +4,5 @@ import enum
 
 
 class VideoMode(enum.Enum):
-    HGR = 0
-    DHGR = 1
+    HGR = 0  # Hi-Res
+    DHGR = 1  # Double Hi-Res

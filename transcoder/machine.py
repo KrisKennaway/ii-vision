@@ -3,11 +3,10 @@
 from typing import Iterator
 
 
+# TODO: screen memory changes should happen via Machine while emitting opcodes?
+
 class Machine:
     """Represents Apple II and player virtual machine state."""
-
-    def __init__(self):
-        self.page = 0x20  # type: int
 
     def emit(self, opcode: "Opcode") -> Iterator[int]:
         """
