@@ -39,7 +39,8 @@ class Audio:
 
         a = librosa.core.to_mono(data)
         a = librosa.resample(a, f.samplerate,
-                             self.sample_rate).flatten()
+                             self.sample_rate,
+                             res_type='scipy', scale=True).flatten()
 
         return a
 
