@@ -437,10 +437,10 @@ recv: ; 15 cycles so far
 ; pad cycles to keep ticking on 36/37 cycle cadence
 ; TODO: what can we do with the luxury of 14 unused cycles?!
 @2: ; 30 so far
+    STA TICK ; 4 ; 34
     ; X will usually already be 0 from op_ack except during first frame when reading
     ; header but reset it unconditionally
     LDX #$00 ; 2
-    STA TICK ; 4 ; 36
 
     NOP ; 2
     STA dummy ; 4
@@ -453,7 +453,7 @@ op_nop:
     LDY WDATA ; 4
     STY @D+1 ; 4
 @D:
-    JMP op_nop ; 3 ; 23 with following tick (37 in fallthrough case)
+    JMP op_nop ; 3 ; 23 with following tick (39 if we fell through from checkrecv case)
 
 ; Build macros for "fat" opcodes that do the following:
 ; - tick twice, N cycles apart (N = 4 .. 66 in steps of 2)
@@ -1312,16 +1312,18 @@ op_ack:
     LDA #>S0RXRD ; 2
     STA WADRH ; 4
     LDX #<S0RXRD ; 2
-    STX WADRL ; 4
+    ; prepare for ADC below, but reordered to allow TICK at offset 34
+    CLC ; 2
 
-    STA TICK ; 4 (36)
+    STA TICK ; 4 (34)
+
+    STX WADRL ; 4
 
     LDA WDATA ; 4 Read high byte
     ; No need to read low byte since it's guaranteed to be 0 since we're at the end of a 2K frame.
 
     ; Update new Received Read pointer
     ; We have received an additional 2KB
-    CLC ; 2
     ADC #$08 ; 2
 
     STX WADRL ; 4 Reset address pointer, X still has #<S0RXRD
@@ -1339,7 +1341,7 @@ op_ack:
     ; - used as the low byte for resetting the W5100 address pointer when we're ready to start processing more data
     LDX #$00 ; 2 restore invariant for dispatch loop
 
-    JMP checkrecv ; 3 (37 with following STA TICK)
+    JMP checkrecv ; 3 (39 with following STA TICK)
 
 ; Quit to ProDOS
 exit:
