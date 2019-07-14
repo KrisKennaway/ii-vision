@@ -39,17 +39,16 @@ class TestDHGRBitmap(unittest.TestCase):
     def test_pixel_packing_offset_0(self):
         """Screen byte packing happens correctly at offset 0."""
 
-        #                              PBBBAAAA
-        self.aux.page_offset[0, 0] = 0b11110101
-        #                               PDDCCCCB
-        self.main.page_offset[0, 0] = 0b01000011
-        #                              PFEEEEDD
-        self.aux.page_offset[0, 1] = 0b11110101
-        #                               PGGGGFFF
-        self.main.page_offset[0, 1] = 0b01000011
-
         dhgr = screen.DHGRBitmap(
             main_memory=self.main, aux_memory=self.aux, palette=Palette.NTSC)
+        #                                  PBBBAAAA
+        dhgr.apply(0, 0, True, np.uint8(0b11110101))
+        #                                   PDDCCCCB
+        dhgr.apply(0, 0, False, np.uint8(0b01000011))
+        #                                  PFEEEEDD
+        dhgr.apply(0, 1, True, np.uint8(0b11110101))
+        #                                   PGGGGFFF
+        dhgr.apply(0, 1, False, np.uint8(0b01000011))
 
         self.assertEqual(
             0b0001000011111010110000111110101000,
@@ -69,17 +68,25 @@ class TestDHGRBitmap(unittest.TestCase):
     def test_pixel_packing_offset_1(self):
         """Screen byte packing happens correctly at offset 1."""
 
-        #                              PBBBAAAA
-        self.aux.page_offset[0, 2] = 0b11110101
-        #                               PDDCCCCB
-        self.main.page_offset[0, 2] = 0b01000011
-        #                              PFEEEEDD
-        self.aux.page_offset[0, 3] = 0b11110101
-        #                               PGGGGFFF
-        self.main.page_offset[0, 3] = 0b01000011
+        # #                              PBBBAAAA
+        # self.aux.page_offset[0, 2] = 0b11110101
+        # #                               PDDCCCCB
+        # self.main.page_offset[0, 2] = 0b01000011
+        # #                              PFEEEEDD
+        # self.aux.page_offset[0, 3] = 0b11110101
+        # #                               PGGGGFFF
+        # self.main.page_offset[0, 3] = 0b01000011
 
         dhgr = screen.DHGRBitmap(
             main_memory=self.main, aux_memory=self.aux, palette=Palette.NTSC)
+        #                                  PBBBAAAA
+        dhgr.apply(0, 2, True, np.uint8(0b11110101))
+        #                                   PDDCCCCB
+        dhgr.apply(0, 2, False, np.uint8(0b01000011))
+        #                                  PFEEEEDD
+        dhgr.apply(0, 3, True, np.uint8(0b11110101))
+        #                                   PGGGGFFF
+        dhgr.apply(0, 3, False, np.uint8(0b01000011))
 
         self.assertEqual(
             0b0001000011111010110000111110101000,
@@ -104,17 +111,17 @@ class TestDHGRBitmap(unittest.TestCase):
     def test_pixel_packing_offset_127(self):
         """Screen byte packing happens correctly at offset 127."""
 
-        #                              PBBBAAAA
-        self.aux.page_offset[0, 254] = 0b11110101
-        #                               PDDCCCCB
-        self.main.page_offset[0, 254] = 0b01000011
-        #                              PFEEEEDD
-        self.aux.page_offset[0, 255] = 0b11110101
-        #                               PGGGGFFF
-        self.main.page_offset[0, 255] = 0b01000011
 
         dhgr = screen.DHGRBitmap(
             main_memory=self.main, aux_memory=self.aux, palette=Palette.NTSC)
+        #                                    PBBBAAAA
+        dhgr.apply(0, 254, True, np.uint8(0b11110101))
+        #                                     PDDCCCCB
+        dhgr.apply(0, 254, False, np.uint8(0b01000011))
+        #                                    PFEEEEDD
+        dhgr.apply(0, 255, True, np.uint8(0b11110101))
+        #                                     PGGGGFFF
+        dhgr.apply(0, 255, False, np.uint8(0b01000011))
 
         self.assertEqual(
             0b0001000011111010110000111110101000,
@@ -277,6 +284,7 @@ class TestDHGRBitmap(unittest.TestCase):
             0b1110000000000000000000000000000000,
             dhgr.packed[12, 17])
 
+        # Update offset 2
         dhgr.apply(page=12, offset=36, is_aux=False, value=np.uint8(0b0001101))
         self.assertEqual(
             0b101,
@@ -315,6 +323,17 @@ class TestDHGRBitmap(unittest.TestCase):
             0b1011010101000000000000000000000000,
             dhgr.packed[12, 17])
 
+        # Now propagate new footer from neighbour onto (12, 18)
+        dhgr.apply(page=12, offset=38, is_aux=True, value=np.uint8(0b1111001))
+        self.assertEqual(
+            0b0011010101111111100011010001101101,
+            dhgr.packed[12, 18]
+        )
+        # Neighbouring header
+        self.assertEqual(
+            0b0000000000000000000000001111001101,
+            dhgr.packed[12, 19])
+
     def test_fix_array_neighbours(self):
         """Test that _fix_array_neighbours DTRT after masked_update."""
 
@@ -351,6 +370,15 @@ class TestDHGRBitmap(unittest.TestCase):
             )
         )
 
+        packed = dhgr.masked_update(0, dhgr.packed, np.uint8(0b101))
+        dhgr._fix_array_neighbours(packed, 0)
+
+        # Should propagate to all footers
+        self.assertEqual(
+            0, np.count_nonzero(
+                packed[packed != 0b1010000000000000000000000000101000]
+            )
+        )
 
 class TestHGRBitmap(unittest.TestCase):
     def setUp(self) -> None:

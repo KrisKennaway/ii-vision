@@ -210,14 +210,14 @@ class Bitmap:
         body = self._body()
 
         # Prepend last 3 bits of previous odd byte so we can correctly
-        # decode the effective colours at the beginning of the 22-bit tuple
+        # decode the effective colours at the beginning of the body tuple
         prev_col = np.roll(body, 1, axis=1).astype(np.uint64)
         header = self._make_header(prev_col)
         # Don't leak header across page boundaries
         header[:, 0] = 0
 
         # Append first 3 bits of next even byte so we can correctly
-        # decode the effective colours at the end of the 22-bit tuple
+        # decode the effective colours at the end of the body tuple
         next_col = np.roll(body, -1, axis=1).astype(np.uint64)
         footer = self._make_footer(next_col)
         # Don't leak footer across page boundaries
@@ -314,26 +314,26 @@ class Bitmap:
 
         return column_right
 
-    def _fix_array_neighbours(
-            self,
-            ary: np.ndarray,
-            byte_offset: int
-    ) -> None:
-        """Fix up column headers/footers for all array entries."""
-
-        # TODO: don't leak header/footer across page boundaries
-
-        # Propagate new value into neighbouring byte headers/footers if
-        # necessary
-        if byte_offset == 0:
-            # Need to also update the footer of the preceding column
-            shifted_left = np.roll(ary, -1, axis=1)
-            self._fix_column_left(ary, shifted_left)
-
-        elif byte_offset == (self.SCREEN_BYTES - 1):
-            # Need to also update the header of the next column
-            shifted_right = np.roll(ary, 1, axis=1)
-            self._fix_column_right(ary, shifted_right)
+    # def _fix_array_neighbours(
+    #         self,
+    #         ary: np.ndarray,
+    #         byte_offset: int
+    # ) -> None:
+    #     """Fix up column headers/footers for all array entries."""
+    #
+    #     # TODO: don't leak header/footer across page boundaries
+    #
+    #     # Propagate new value into neighbouring byte headers/footers if
+    #     # necessary
+    #     if byte_offset == 0:
+    #         # Need to also update the footer of the preceding column
+    #         shifted_left = np.roll(ary, -1, axis=1)
+    #         self._fix_column_left(ary, shifted_left)
+    #
+    #     elif byte_offset == (self.SCREEN_BYTES - 1):
+    #         # Need to also update the header of the next column
+    #         shifted_right = np.roll(ary, 1, axis=1)
+    #         self._fix_column_right(ary, shifted_right)
 
     @classmethod
     @functools.lru_cache(None)
@@ -400,37 +400,14 @@ class Bitmap:
             is_aux: bool
     ) -> np.ndarray:
         """Compute edit distance matrix from source bitmap."""
-        return self._diff_weights(source.packed, is_aux)
-
-    # TODO: unit test
-    def _diff_weights(
-            self,
-            source_packed: np.ndarray,
-            is_aux: bool,
-            content: np.uint8 = None
-    ) -> np.ndarray:
-        """Computes edit distance matrix from source_packed to self.packed
-
-        If content is set, the distance will be computed as if this value
-        was stored into each offset position of source_packed, i.e. to
-        allow evaluating which offsets (if any) should be chosen for storing
-        this content byte.
-        """
 
         diff = np.ndarray((32, 256), dtype=np.int)
-
         offsets = self._byte_offsets(is_aux)
 
         dists = []
         for o in offsets:
-            if content is not None:
-                compare_packed = self.masked_update(o, source_packed, content)
-                self._fix_array_neighbours(compare_packed, o)
-            else:
-                compare_packed = source_packed
-
             # Pixels influenced by byte offset o
-            source_pixels = self.mask_and_shift_data(compare_packed, o)
+            source_pixels = self.mask_and_shift_data(source.packed, o)
             target_pixels = self.mask_and_shift_data(self.packed, o)
 
             # Concatenate N-bit source and target into 2N-bit values
@@ -466,34 +443,57 @@ class Bitmap:
                     continue
                 ok = False
                 print(p, o, bin(self.packed[p, o - 1]),
-                                bin(headers[p, o]),
+                      bin(headers[p, o]),
                       bin(self.packed[p, o]),
                       bin(self.packed[p, o + 1]), bin(footers[p, o]),
                       bin(res[p, o])
                       )
             assert ok
 
+    CONTENT_RANGE = None
+
     # TODO: unit tests
-    def compute_delta(
-            self,
-            content: int,
-            diff_weights: np.ndarray,
-            is_aux: bool
-    ) -> np.ndarray:
+    def compute_delta(self, is_aux: bool) -> np.ndarray:
         """Compute which content stores introduce the least additional error.
 
         We compute the effect of storing content at all possible offsets
-        within self.packed, and then subtract the previous diff weights.
-
-        Negative values indicate that the new content value is closer to the
-        target than the current content.
+        within self.packed, in terms of the new edit_distance to the target
+        pixels.
         """
-        # TODO: use error edit distance?
+        # Only need to consider 0x0 .. 0x7f content stores
+        diff = np.ndarray((self.CONTENT_RANGE, 32, 256), dtype=np.int)
 
-        new_diff = self._diff_weights(self.packed, is_aux, content)
+        all_content_bytes = np.arange(
+            self.CONTENT_RANGE, dtype=np.uint64).reshape(
+            (self.CONTENT_RANGE, 1))
 
-        # TODO: try different weightings
-        return (new_diff * 5) - diff_weights
+        def _target_masked(content, t, byte_offset):
+            return self.masked_update(byte_offset, t, content)
+
+        offsets = self._byte_offsets(is_aux)
+
+        dists = []
+        for o in offsets:
+            compare_packed = np.apply_along_axis(
+                _target_masked, 1, all_content_bytes, self.packed, o)
+            # self.masked_update(o, self.packed, content)
+            # self._fix_array_neighbours(compare_packed, o)
+
+            # Pixels influenced by byte offset 0
+            source_pixels = self.mask_and_shift_data(compare_packed, o)
+            target_pixels = self.mask_and_shift_data(self.packed, o)
+
+            # Concatenate N-bit source and target into 2N-bit values
+            pair = (source_pixels << self.MASKED_BITS) + target_pixels
+            dist = self.edit_distances(self.palette)[o][pair].reshape(
+                pair.shape)
+            dists.append(dist)
+
+        # Interleave even/odd columns
+        diff[:, :, 0::2] = dists[0]
+        diff[:, :, 1::2] = dists[1]
+
+        return diff
 
 
 class HGRBitmap(Bitmap):
@@ -572,7 +572,7 @@ class HGRBitmap(Bitmap):
     #
     # From header: 3 bits (2 HGR pixels but might be shifted right by palette)
     # From body: 7 bits doubled, plus possible shift from palette bit
-    MASKED_DOTS = np.uint64(18)  # 3 + 7 + 7
+    MASKED_DOTS = np.uint64(18)  # 3 + 7 + 7 + 1
 
     # List of bitmasks for extracting the subset of packed data corresponding
     # to bits influencing/influenced by a given byte offset.  These must be
@@ -592,6 +592,9 @@ class HGRBitmap(Bitmap):
     #   even: 0 (1 at start of 3-bit header)
     #   odd:  2 (3)
     PHASES = [1, 3]
+
+    # Need to consider all 0x0 .. 0xff content stores
+    CONTENT_RANGE = 256
 
     def __init__(self, palette: pal.Palette, main_memory: MemoryMap):
         super(HGRBitmap, self).__init__(palette, main_memory, None)
@@ -850,7 +853,7 @@ class DHGRBitmap(Bitmap):
         np.uint64(0b0000000000000011111111111110000000),  # byte 1 uint13 mask
         np.uint64(0b0000000111111111111100000000000000),  # byte 2 uint13 mask
         np.uint64(0b1111111111111000000000000000000000),  # byte 3 uint13 mask
-    ]
+    ]             #      XXX            XXX
 
     # How much to right-shift bits after masking, to bring into uint13 range
     BYTE_SHIFTS = [np.uint64(0), np.uint64(7), np.uint64(14), np.uint64(21)]
@@ -865,6 +868,9 @@ class DHGRBitmap(Bitmap):
     # AUX 1: 2 (3)
     # MAIN 1: 1 (2)
     PHASES = [1, 0, 3, 2]
+
+    # Only need to consider 0x0 .. 0x7f content stores
+    CONTENT_RANGE = 128
 
     @staticmethod
     def _make_header(col: IntOrArray) -> IntOrArray:
