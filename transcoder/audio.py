@@ -8,21 +8,38 @@ import numpy as np
 
 
 class Audio:
+    """
+    Decodes audio stream from input file and resamples.
+
+    Notes on audio bitrate:
+
+    At 73 cycles/tick, true audio playback sample rate is
+    roughly 1024*1024/73 = 14364 Hz (ignoring ACK slow path).
+    Typical audio encoding is 44100Hz which is close to 14700*3
+    Downscaling by 3x gives better results than trying to resample
+    to a non-divisor.  So we cheat a bit and play back the video a
+    tiny bit (<2%) faster.
+
+    For //gs playback at 2.8MHz, the effective speed increase is only about
+    1.6x.  This is probably because accessing the I/O page is done at 1MHz
+    to not mess up hardware timings.
+
+    This is close (2.1%) to 22500Hz which is again a simple divisor of the
+    base frequency (1/2).
+    """
+
     def __init__(
-            self, filename: str, normalization: float = None):
+            self,
+            filename: str,
+            bitrate: int = 14700,
+            normalization: float = None):
         self.filename = filename  # type: str
 
         # TODO: take into account that the available range is slightly offset
         # as fraction of total cycle count?
         self._tick_range = [4, 66]
 
-        # At 73 cycles/tick, true audio playback sample rate is
-        # roughly 1024*1024/73 = 14364 Hz (ignoring ACK slow path).
-        # Typical audio encoding is 44100Hz which is close to 14700*3
-        # Downscaling by 3x gives better results than trying to resample
-        # to a non-divisor.  So we cheat a bit and play back the video a tiny
-        # bit (<2%) faster.
-        self.sample_rate = 14700.  # type: float
+        self.sample_rate = float(bitrate)  # type: float
 
         self.normalization = (
                 normalization or self._normalization())  # type: float
@@ -39,7 +56,8 @@ class Audio:
 
         a = librosa.core.to_mono(data)
         a = librosa.resample(a, f.samplerate,
-                             self.sample_rate).flatten()
+                             self.sample_rate,
+                             res_type='scipy', scale=True).flatten()
 
         return a
 

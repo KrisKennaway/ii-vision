@@ -15,6 +15,7 @@ class Movie:
     def __init__(
             self, filename: str,
             every_n_video_frames: int = 1,
+            audio_bitrate: int = 14700,
             audio_normalization: float = None,
             max_bytes_out: int = None,
             video_mode: VideoMode = VideoMode.HGR,
@@ -27,7 +28,8 @@ class Movie:
         self.palette = palette  # type: Palette
 
         self.audio = audio.Audio(
-            filename, normalization=audio_normalization)  # type: audio.Audio
+            filename, bitrate=audio_bitrate,
+            normalization=audio_normalization)  # type: audio.Audio
 
         self.frame_grabber = frame_grabber.FileFrameGrabber(
             filename, mode=video_mode, palette=self.palette)
