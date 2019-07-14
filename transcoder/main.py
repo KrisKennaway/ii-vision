@@ -21,6 +21,11 @@ parser.add_argument(
     help='Override auto-detected multiplier for audio normalization.'
 )
 parser.add_argument(
+    '--audio_bitrate', type=int, default=14700,
+    help='Select output audio bitrate (Hz), controls video speed (Default: '
+         '14700; try 22500 for //gs 2.8MHz mode)'
+)
+parser.add_argument(
     '--every_n_video_frames', type=int, default=2,
     help='Allows skipping frames of input video to lower effective output '
          'frame rate, which may give better quality for some videos.'
@@ -42,6 +47,7 @@ def main(args):
     m = movie.Movie(
         filename,
         every_n_video_frames=args.every_n_video_frames,
+        audio_bitrate=args.audio_bitrate,
         audio_normalization=args.audio_normalization,
         max_bytes_out=1024. * 1024 * args.max_output_mb,
         video_mode=video_mode.VideoMode[args.video_mode],
