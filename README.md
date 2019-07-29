@@ -23,13 +23,13 @@ The video frames are actually encoded at the original frame rate (or optionally 
 
 I'm using the excellent (though under-documented ;) [BMP2DHR](http://www.appleoldies.ca/bmp2dhr/) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
 
-## KansasFest 2019 presentation
+### KansasFest 2019 presentation
 
 I gave a talk about this at [KansasFest 2019](https://www.kansasfest.org/), see the [slides](https://docs.google.com/presentation/d/1YhpMOoVjkXKm2iYAlpB-03HqnLHUsilsOW-83OHwZVE/edit?usp=sharing)
 
 TODO: link video once it is available.
 
-### In action
+## In action
 
 Sample videos (recording of playback on Apple //gs with RGB monitor, or HDMI via VidHD)
 
