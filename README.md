@@ -13,22 +13,6 @@ Requires:
 Dedicated to the memory of [Bob Bishop](https://www.kansasfest.org/2014/11/remembering-bob-bishop/), early pioneer of Apple II
 [video](https://www.youtube.com/watch?v=RiWE-aO-cyU) and [audio](http://www.faddensoftware.com/appletalker.png).
 
-## Details
-
-The audio is a 5-bit DAC at 73 cycles/sample (~14.3KHz carrier), which is a well-known technique (going back to ~1990).  With 73 cycles/audio sample there are a lot of otherwise-wasted cycles in between the speaker ticks.  It turns out, there's enough space to multiplex streaming video data (writing 4 screen bytes per sample) 
-
-This ends up streaming data at about 100KB/sec of which 56KB/sec are updates to the hires screen memory.  This is enough for about 8 full redraws of the hires graphics screen per second (i.e. if the entire screen contents change between frames).  If we didn't care about audio, one can get substantially more video throughput i.e. a higher quality video-only stream, but this seems to be a good sweet spot in terms of video + audio quality. 
-
-The video frames are actually encoded at the original frame rate (or optionally by skipping frames), prioritizing differences in the screen content, so the effective frame rate is higher than this if only a fraction of the screen is changing between frames (which is the typical case). 
-
-I'm using the excellent (though under-documented ;) [BMP2DHR](http://www.appleoldies.ca/bmp2dhr/) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
-
-### KansasFest 2019 presentation
-
-I gave a talk about this at [KansasFest 2019](https://www.kansasfest.org/), see the [slides](https://docs.google.com/presentation/d/1YhpMOoVjkXKm2iYAlpB-03HqnLHUsilsOW-83OHwZVE/edit?usp=sharing)
-
-TODO: link video once it is available.
-
 ## In action
 
 Sample videos (recording of playback on Apple //gs with RGB monitor, or HDMI via VidHD)
@@ -47,6 +31,22 @@ Older Hi-Res videos:
 (These are from older versions, for which quality was not as good)
 
 There may be more on this [YouTube playlist](https://www.youtube.com/playlist?list=PLoAt3SC_duBiIjqK8FBoDG_31nUPB8KBM)
+
+## Details
+
+The audio is a 5-bit DAC at 73 cycles/sample (~14.3KHz carrier), which is a well-known technique (going back to ~1990).  With 73 cycles/audio sample there are a lot of otherwise-wasted cycles in between the speaker ticks.  It turns out, there's enough space to multiplex streaming video data (writing 4 screen bytes per sample) 
+
+This ends up streaming data at about 100KB/sec of which 56KB/sec are updates to the hires screen memory.  This is enough for about 8 full redraws of the hires graphics screen per second (i.e. if the entire screen contents change between frames).  If we didn't care about audio, one can get substantially more video throughput i.e. a higher quality video-only stream, but this seems to be a good sweet spot in terms of video + audio quality. 
+
+The video frames are actually encoded at the original frame rate (or optionally by skipping frames), prioritizing differences in the screen content, so the effective frame rate is higher than this if only a fraction of the screen is changing between frames (which is the typical case). 
+
+I'm using the excellent (though under-documented ;) [BMP2DHR](http://www.appleoldies.ca/bmp2dhr/) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
+
+### KansasFest 2019 presentation
+
+I gave a talk about this at [KansasFest 2019](https://www.kansasfest.org/), see the [slides](https://docs.google.com/presentation/d/1YhpMOoVjkXKm2iYAlpB-03HqnLHUsilsOW-83OHwZVE/edit?usp=sharing)
+
+TODO: link video once it is available.
 
 ## Release Notes
 
