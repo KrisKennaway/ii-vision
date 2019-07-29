@@ -23,17 +23,30 @@ The video frames are actually encoded at the original frame rate (or optionally 
 
 I'm using the excellent (though under-documented ;) [BMP2DHR](http://www.appleoldies.ca/bmp2dhr/) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
 
+## KansasFest 2019 presentation
+
+I gave a talk about this at [KansasFest 2019](https://www.kansasfest.org/), see the [slides](https://docs.google.com/presentation/d/1YhpMOoVjkXKm2iYAlpB-03HqnLHUsilsOW-83OHwZVE/edit?usp=sharing)
+
+TODO: link video once it is available.
+
 ### In action
 
-Sample videos (recording of playback on Apple //gs)
+Sample videos (recording of playback on Apple //gs with RGB monitor, or HDMI via VidHD)
 
-- [Bad Apple](https://youtu.be/4JEChnZIrCw)
-- [Try getting this song out of your head](https://youtu.be/WzE-pROpJ2o)
+Double Hi-Res:
+- [Try getting this song out of your head](https://youtu.be/S7aNcyojoZI)
+- [Babylon 5 title credits](https://youtu.be/PadKk8n1xY8)
+
+Hi-Res:
+- [Bad Apple](https://youtu.be/R5_af8Mo0Q4)
+
+Older Hi-Res videos:
+- [Paranoimia ft Max Headroom](https://youtu.be/wfdbEyP6v4o)
 - [How many of us still feel about our Apple II's](https://youtu.be/-e5LRcnQF-A)
 
-(The last two are from an older version, for which quality was not as good)
+(These are from older versions, for which quality was not as good)
 
-TODO: update with newer sample videos
+There may be more on this [YouTube playlist](https://www.youtube.com/playlist?list=PLoAt3SC_duBiIjqK8FBoDG_31nUPB8KBM)
 
 ## Release Notes
 
