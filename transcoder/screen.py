@@ -546,8 +546,7 @@ class Bitmap:
         new_diff = self._diff_weights_page(
             packed_page, packed_page, is_aux, content)
 
-        # TODO: try different weightings
-        return (new_diff * 5) - diff_weights
+        return new_diff - diff_weights
 
 
 class HGRBitmap(Bitmap):
