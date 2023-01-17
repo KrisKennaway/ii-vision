@@ -1,4 +1,4 @@
-# ]\[-Vision v0.2
+# ]\[-Vision v0.3
 
 Streaming video and audio for the Apple II.
 
@@ -70,6 +70,12 @@ This takes about 3 hours on my machine.
 TODO: download instructions
 
 ## Release Notes
+
+### v0.3 (17 Jan 2023)
+
+- Fixed an image quality bug in the transcoder
+- Quality of life improvements to installation process
+- Stop using LFS to store the generated data files in git, they're using up my quota
 
 ### v0.2 (19 July 2019)
 
