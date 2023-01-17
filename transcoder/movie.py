@@ -6,6 +6,7 @@ import audio
 import frame_grabber
 import machine
 import opcodes
+import screen
 import video
 from palette import Palette
 from video_mode import VideoMode
@@ -58,34 +59,54 @@ class Movie:
         :return:
         """
         video_frames = self.frame_grabber.frames()
-        main_seq = None
-        aux_seq = None
+        op_seq = None
 
         yield opcodes.Header(mode=self.video_mode)
 
+        last_memory_bank = self.aux_memory_bank
         for au in self.audio.audio_stream():
             self.ticks += 1
-            if self.video.tick(self.ticks):
+            new_video_frame = self.video.tick(self.ticks)
+            if new_video_frame:
                 try:
                     main, aux = next(video_frames)
                 except StopIteration:
                     break
 
-                if ((self.video.frame_number - 1) % self.every_n_video_frames
-                        == 0):
-                    print("Starting frame %d" % self.video.frame_number)
-                    main_seq = self.video.encode_frame(main, is_aux=False)
+                should_encode_frame = (
+                        (self.video.frame_number - 1) %
+                        self.every_n_video_frames == 0
+                )
+                if should_encode_frame:
+                    if self.video_mode == VideoMode.DHGR:
+                        target_pixelmap = screen.DHGRBitmap(
+                            main_memory=main,
+                            aux_memory=aux,
+                            palette=self.palette
+                        )
+                    else:
+                        target_pixelmap = screen.HGRBitmap(
+                            main_memory=main,
+                            palette=self.palette
+                        )
 
-                    if aux:
-                        aux_seq = self.video.encode_frame(aux, is_aux=True)
+                    print("Starting frame %d" % self.video.frame_number)
+                    op_seq = self.video.encode_frame(
+                        target_pixelmap, is_aux=self.aux_memory_bank)
+                    self.video.out_of_work = {True: False, False: False}
+
+            if self.aux_memory_bank != last_memory_bank:
+                # We've flipped memory banks, start new opcode sequence
+                last_memory_bank = self.aux_memory_bank
+                op_seq = self.video.encode_frame(
+                    target_pixelmap, is_aux=self.aux_memory_bank)
 
             # au has range -15 .. 16 (step=1)
             # Tick cycles are units of 2
             tick = au * 2  # -30 .. 32 (step=2)
             tick += 34  # 4 .. 66 (step=2)
 
-            (page, content, offsets) = next(
-                aux_seq if self.aux_memory_bank else main_seq)
+            (page, content, offsets) = next(op_seq)
 
             yield opcodes.TICK_OPCODES[(tick, page)](content, offsets)
 

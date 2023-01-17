@@ -27,12 +27,15 @@ class Video:
     ):
         self.mode = mode  # type: VideoMode
         self.frame_grabber = frame_grabber  # type: FrameGrabber
-        self.ticks_per_second = ticks_per_second  # type: float
+        self.ticks_per_second = float(ticks_per_second)  # type: float
         self.ticks_per_frame = (
                 self.ticks_per_second / frame_grabber.input_frame_rate
         )  # type: float
         self.frame_number = 0  # type: int
         self.palette = palette  # type: Palette
+
+        self._opcodes = 0
+        self._offsets = 0
 
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
@@ -57,6 +60,10 @@ class Video:
         if self.mode == mode.DHGR:
             self.aux_update_priority = np.zeros((32, 256), dtype=np.int32)
 
+        # Indicates whether we have run out of work for the main/aux banks.
+        # Key is True for aux bank and False for main bank
+        self.out_of_work = {True: False, False: False}
+
     def tick(self, ticks: int) -> bool:
         """Keep track of when it is time for a new image frame."""
 
@@ -67,7 +74,7 @@ class Video:
 
     def encode_frame(
             self,
-            target: screen.MemoryMap,
+            target: screen.Bitmap,
             is_aux: bool,
     ) -> Iterator[opcodes.Opcode]:
         """Converge towards target frame in priority order of edit distance."""
@@ -84,6 +91,8 @@ class Video:
             memory_map.page_offset[screen.SCREEN_HOLES]) == 0
 
         print("Similarity %f" % (update_priority.mean()))
+        if self._opcodes:
+            print("Opcode fill rate %f" % (self._offsets / self._opcodes))
 
         yield from self._index_changes(
             memory_map, target, update_priority, is_aux)
@@ -91,30 +100,16 @@ class Video:
     def _index_changes(
             self,
             source: screen.MemoryMap,
-            target: screen.MemoryMap,
+            target_pixelmap: screen.Bitmap,
             update_priority: np.array,
-            is_aux: True
+            is_aux: bool
     ) -> Iterator[Tuple[int, int, List[int]]]:
         """Transform encoded screen to sequence of change tuples."""
 
-        if self.mode == VideoMode.DHGR:
-            if is_aux:
-                target_pixelmap = screen.DHGRBitmap(
-                    main_memory=self.memory_map,
-                    aux_memory=target,
-                    palette=self.palette
-                )
-            else:
-                target_pixelmap = screen.DHGRBitmap(
-                    main_memory=target,
-                    aux_memory=self.aux_memory_map,
-                    palette=self.palette
-                )
+        if self.mode == VideoMode.DHGR and is_aux:
+            target = target_pixelmap.aux_memory
         else:
-            target_pixelmap = screen.HGRBitmap(
-                main_memory=target,
-                palette=self.palette
-            )
+            target = target_pixelmap.main_memory
 
         diff_weights = target_pixelmap.diff_weights(self.pixelmap, is_aux)
         # Don't bother storing into screen holes
@@ -124,10 +119,9 @@ class Video:
         # with new frame
         update_priority[diff_weights == 0] = 0
         update_priority += diff_weights
+        assert np.all(update_priority >= 0)
 
         priorities = self._heapify_priorities(update_priority)
-
-        content_deltas = {}
 
         while priorities:
             pri, _, page, offset = heapq.heappop(priorities)
@@ -152,15 +146,7 @@ class Video:
             diff_weights[page, offset] = 0
 
             # Update memory maps
-            source.page_offset[page, offset] = content
             self.pixelmap.apply(page, offset, is_aux, content)
-
-            # Make sure we don't emit this offset as a side-effect of some
-            # other offset later.
-            for cd in content_deltas.values():
-                cd[page, offset] = 0
-                # TODO: what if we add another content_deltas entry later?
-                #  We might clobber it again
 
             # Need to find 3 more offsets to fill this opcode
             for err, o in self._compute_error(
@@ -168,7 +154,6 @@ class Video:
                     content,
                     target_pixelmap,
                     diff_weights,
-                    content_deltas,
                     is_aux
             ):
                 assert o != offset
@@ -180,13 +165,6 @@ class Video:
                     # Someone already resolved this diff.
                     continue
 
-                # Make sure we don't end up considering this (page, offset)
-                # again until the next image frame.  Even if a better match
-                # comes along, it's probably better to fix up some other byte.
-                # TODO: or should we recompute it with new error?
-                for cd in content_deltas.values():
-                    cd[page, o] = 0
-
                 byte_offset = target_pixelmap.byte_offset(o, is_aux)
                 old_packed = target_pixelmap.packed[page, o // 2]
 
@@ -196,13 +174,11 @@ class Video:
                 # Update priority for the offset we're emitting
                 update_priority[page, o] = p
 
-                source.page_offset[page, o] = content
                 self.pixelmap.apply(page, o, is_aux, content)
-
                 if p:
                     # This content byte introduced an error, so put back on the
                     # heap in case we can get back to fixing it exactly
-                    # during this frame.  Otherwise we'll get to it later.
+                    # during this frame.  Otherwise, we'll get to it later.
                     heapq.heappush(
                         priorities, (-p, random.getrandbits(8), page, o))
 
@@ -210,13 +186,34 @@ class Video:
                 if len(offsets) == 3:
                     break
 
+            # Record how many additional offsets we were able to fill
+            self._opcodes += 1
+            self._offsets += len(offsets)
             # Pad to 4 if we didn't find enough
             for _ in range(len(offsets), 4):
                 offsets.append(offsets[0])
-            yield (page + 32, content, offsets)
+            yield page + 32, content, offsets
 
-        # # TODO: there is still a bug causing residual diffs when we have
-        # # apparently run out of work to do
+        self.out_of_work[is_aux] = True
+
+        # These debugging assertions validate that when we are out of work,
+        # our source and target representations should be identical.
+        #
+        # They only work correctly for palettes that do not have identical
+        # colours (e.g. IIGS but not NTSC which has two identical greys).
+        #
+        # The problem is that if we have substituted one grey for the other
+        # there may be no diff if they are part of an extended run of greys.
+        #
+        # The only difference is at the end of the run where these produce
+        # different artifact colours, but this may only be visible in the
+        # other bank.
+        #
+        # It may take several iterations of main/aux before we will notice and
+        # correct all of these differences.  That means we don't have a
+        # deterministic point in time when we can assert that all diffs should
+        # have been resolved.
+        # TODO: add flag to enable debug assertions
         if not np.array_equal(source.page_offset, target.page_offset):
             diffs = np.nonzero(source.page_offset != target.page_offset)
             for i in range(len(diffs[0])):
@@ -238,12 +235,28 @@ class Video:
                     diff_p, diff_o, source.page_offset[diff_p, diff_o],
                     target.page_offset[diff_p, diff_o]
                 ))
-                # assert False
+                assert False
+
+        # If we've finished both main and aux pages, there should be no residual
+        # diffs in packed representation
+        all_done = self.out_of_work[True] and self.out_of_work[False]
+        if all_done and not np.array_equal(self.pixelmap.packed,
+                                           target_pixelmap.packed):
+            diffs = np.nonzero(
+                self.pixelmap.packed != target_pixelmap.packed)
+            print("is_aux: %s" % is_aux)
+            for i in range(len(diffs[0])):
+                diff_p = diffs[0][i]
+                diff_o = diffs[1][i]
+                print("(%d, %d): got %d want %d" % (
+                    diff_p, diff_o, self.pixelmap.packed[diff_p, diff_o],
+                    target_pixelmap.packed[diff_p, diff_o]))
+            assert False
 
         # If we run out of things to do, pad forever
         content = target.page_offset[0, 0]
         while True:
-            yield (32, content, [0, 0, 0, 0])
+            yield 32, content, [0, 0, 0, 0]
 
     @staticmethod
     def _heapify_priorities(update_priority: np.array) -> List:
@@ -254,7 +267,9 @@ class Video:
         pages, offsets = update_priority.nonzero()
         priorities = [tuple(data) for data in np.stack((
             -update_priority[pages, offsets],
-            # Don't use deterministic order for page, offset
+            # Don't use deterministic order for page, offset.  Otherwise,
+            # we get the "venetian blind" effect when filling large blocks of
+            # colour.
             np.random.randint(0, 2 ** 8, size=pages.shape[0]),
             pages,
             offsets)
@@ -265,24 +280,21 @@ class Video:
 
     _OFFSETS = np.arange(256)
 
-    def _compute_error(self, page, content, target_pixelmap, diff_weights,
-                       content_deltas, is_aux):
+    def _compute_error(
+            self, page, content, target_pixelmap, diff_weights, is_aux):
         """Build priority queue of other offsets at which to store content.
 
         Ordered by offsets which are closest to the target content value.
         """
-        # TODO: move this up into parent
-        delta_screen = content_deltas.get(content)
-        if delta_screen is None:
-            delta_screen = target_pixelmap.compute_delta(
-                content, diff_weights, is_aux)
-            content_deltas[content] = delta_screen
-
-        delta_page = delta_screen[page]
+        delta_page = target_pixelmap.compute_delta_page(
+            page, content, diff_weights[page, :], is_aux)
         cond = delta_page < 0
         candidate_offsets = self._OFFSETS[cond]
         priorities = delta_page[cond]
 
+        # Don't use deterministic order for page, offset.  Otherwise,
+        # we get the "venetian blind" effect when filling large blocks of
+        # colour.
         deltas = [
             (priorities[i], random.getrandbits(8), candidate_offsets[i])
             for i in range(len(candidate_offsets))
@@ -290,8 +302,8 @@ class Video:
         heapq.heapify(deltas)
 
         while deltas:
-            pri, _, o = heapq.heappop(deltas)
+            pri, _, offset = heapq.heappop(deltas)
             assert pri < 0
-            assert o <= 255
+            assert 0 <= offset <= 255
 
-            yield -pri, o
+            yield -pri, offset
