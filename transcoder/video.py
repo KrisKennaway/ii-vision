@@ -34,9 +34,6 @@ class Video:
         self.frame_number = 0  # type: int
         self.palette = palette  # type: Palette
 
-        self._opcodes = 0
-        self._offsets = 0
-
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
             screen_page=1)  # type: screen.MemoryMap
@@ -91,8 +88,6 @@ class Video:
             memory_map.page_offset[screen.SCREEN_HOLES]) == 0
 
         print("Similarity %f" % (update_priority.mean()))
-        if self._opcodes:
-            print("Opcode fill rate %f" % (self._offsets / self._opcodes))
 
         yield from self._index_changes(
             memory_map, target, update_priority, is_aux)
@@ -186,9 +181,6 @@ class Video:
                 if len(offsets) == 3:
                     break
 
-            # Record how many additional offsets we were able to fill
-            self._opcodes += 1
-            self._offsets += len(offsets)
             # Pad to 4 if we didn't find enough
             for _ in range(len(offsets), 4):
                 offsets.append(offsets[0])
