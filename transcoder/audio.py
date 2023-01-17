@@ -55,8 +55,8 @@ class Audio:
             'float32').reshape((f.channels, -1), order='F')
 
         a = librosa.core.to_mono(data)
-        a = librosa.resample(a, f.samplerate,
-                             self.sample_rate,
+        a = librosa.resample(a, orig_sr=f.samplerate,
+                             target_sr=self.sample_rate,
                              res_type='scipy', scale=True).flatten()
 
         return a
