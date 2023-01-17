@@ -48,6 +48,27 @@ I gave a talk about this at [KansasFest 2019](https://www.kansasfest.org/), see 
 
 TODO: link video once it is available.
 
+## Installation
+
+This currently requires python3.7 because some dependencies (e.g. weighted-levenshtein) don't compile with 3.9+, and 3.8
+has a [bug](https://bugs.python.org/issue44439) in object pickling.  
+
+```
+python3.7 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+To generate the data files required by the transcoder:
+
+```
+% python transcoder/make_data_tables.py
+```
+
+This takes about 3 hours on my machine.
+
+TODO: download instructions
+
 ## Release Notes
 
 ### v0.2 (19 July 2019)
