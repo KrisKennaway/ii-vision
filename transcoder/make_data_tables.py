@@ -39,7 +39,7 @@ class EditDistanceParams:
     # Smallest substitution value is ~20 from palette.diff_matrices, i.e.
     # we always prefer to transpose 2 pixels rather than substituting colours.
     # TODO: is quality really better allowing transposes?
-    transpose_costs = np.ones((128, 128), dtype=np.float64) * 100000  # 10
+    transpose_costs = np.ones((128, 128), dtype=np.float64)
 
     # These will be filled in later
     substitute_costs = np.zeros((128, 128), dtype=np.float64)
