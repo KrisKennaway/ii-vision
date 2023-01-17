@@ -39,7 +39,7 @@ X_Y_TO_PAGE = np.zeros((192, 40), dtype=np.uint8)
 X_Y_TO_OFFSET = np.zeros((192, 40), dtype=np.uint8)
 
 # Mask of which (page, offset) bytes represent screen holes
-SCREEN_HOLES = np.full((32, 256), True, dtype=np.bool)
+SCREEN_HOLES = np.full((32, 256), True, dtype=np.bool8)
 
 # Dict mapping memory address to (page, y, x_byte) tuple
 ADDR_TO_COORDS = {}
@@ -417,7 +417,7 @@ class Bitmap:
         this content byte.
         """
 
-        diff = np.ndarray((32, 256), dtype=np.int)
+        diff = np.ndarray((32, 256), dtype=np.int32)
 
         offsets = self._byte_offsets(is_aux)
 

@@ -53,9 +53,9 @@ class Video:
             )
 
         # Accumulates pending edit weights across frames
-        self.update_priority = np.zeros((32, 256), dtype=np.int)
+        self.update_priority = np.zeros((32, 256), dtype=np.int32)
         if self.mode == mode.DHGR:
-            self.aux_update_priority = np.zeros((32, 256), dtype=np.int)
+            self.aux_update_priority = np.zeros((32, 256), dtype=np.int32)
 
     def tick(self, ticks: int) -> bool:
         """Keep track of when it is time for a new image frame."""

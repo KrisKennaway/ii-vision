@@ -58,7 +58,7 @@ def compute_diff_matrix(pal: Type[palette.BasePalette]):
 
     Specifically CIE2000 delta values for this palette.
     """
-    dm = np.ndarray(shape=(16, 16), dtype=np.int)
+    dm = np.ndarray(shape=(16, 16), dtype=np.int32)
 
     for colour1, a in pal.RGB.items():
         alab = colormath.color_conversions.convert_color(
