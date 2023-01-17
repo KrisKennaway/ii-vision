@@ -34,6 +34,9 @@ class Video:
         self.frame_number = 0  # type: int
         self.palette = palette  # type: Palette
 
+        self._opcodes = 0
+        self._offsets = 0
+
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
             screen_page=1)  # type: screen.MemoryMap
@@ -88,6 +91,8 @@ class Video:
             memory_map.page_offset[screen.SCREEN_HOLES]) == 0
 
         print("Similarity %f" % (update_priority.mean()))
+        if self._opcodes:
+            print("Opcode fill rate %f" % (self._offsets / self._opcodes))
 
         yield from self._index_changes(
             memory_map, target, update_priority, is_aux)
@@ -181,6 +186,9 @@ class Video:
                 if len(offsets) == 3:
                     break
 
+            # Record how many additional offsets we were able to fill
+            self._opcodes += 1
+            self._offsets += len(offsets)
             # Pad to 4 if we didn't find enough
             for _ in range(len(offsets), 4):
                 offsets.append(offsets[0])
@@ -206,44 +214,44 @@ class Video:
         # deterministic point in time when we can assert that all diffs should
         # have been resolved.
         # TODO: add flag to enable debug assertions
-        # if not np.array_equal(source.page_offset, target.page_offset):
-        #     diffs = np.nonzero(source.page_offset != target.page_offset)
-        #     for i in range(len(diffs[0])):
-        #         diff_p = diffs[0][i]
-        #         diff_o = diffs[1][i]
-        #
-        #         # For HGR, 0x00 or 0x7f may be visually equivalent to the same
-        #         # bytes with high bit set (depending on neighbours), so skip
-        #         # them
-        #         if (source.page_offset[diff_p, diff_o] & 0x7f) == 0 and \
-        #                 (target.page_offset[diff_p, diff_o] & 0x7f) == 0:
-        #             continue
-        #
-        #         if (source.page_offset[diff_p, diff_o] & 0x7f) == 0x7f and \
-        #                 (target.page_offset[diff_p, diff_o] & 0x7f) == 0x7f:
-        #             continue
-        #
-        #         print("Diff at (%d, %d): %d != %d" % (
-        #             diff_p, diff_o, source.page_offset[diff_p, diff_o],
-        #             target.page_offset[diff_p, diff_o]
-        #         ))
-        #         assert False
-        #
-        # # If we've finished both main and aux pages, there should be no residual
-        # # diffs in packed representation
-        # all_done = self.out_of_work[True] and self.out_of_work[False]
-        # if all_done and not np.array_equal(self.pixelmap.packed,
-        #                                    target_pixelmap.packed):
-        #     diffs = np.nonzero(
-        #         self.pixelmap.packed != target_pixelmap.packed)
-        #     print("is_aux: %s" % is_aux)
-        #     for i in range(len(diffs[0])):
-        #         diff_p = diffs[0][i]
-        #         diff_o = diffs[1][i]
-        #         print("(%d, %d): got %d want %d" % (
-        #             diff_p, diff_o, self.pixelmap.packed[diff_p, diff_o],
-        #             target_pixelmap.packed[diff_p, diff_o]))
-        #     assert False
+        if not np.array_equal(source.page_offset, target.page_offset):
+            diffs = np.nonzero(source.page_offset != target.page_offset)
+            for i in range(len(diffs[0])):
+                diff_p = diffs[0][i]
+                diff_o = diffs[1][i]
+
+                # For HGR, 0x00 or 0x7f may be visually equivalent to the same
+                # bytes with high bit set (depending on neighbours), so skip
+                # them
+                if (source.page_offset[diff_p, diff_o] & 0x7f) == 0 and \
+                        (target.page_offset[diff_p, diff_o] & 0x7f) == 0:
+                    continue
+
+                if (source.page_offset[diff_p, diff_o] & 0x7f) == 0x7f and \
+                        (target.page_offset[diff_p, diff_o] & 0x7f) == 0x7f:
+                    continue
+
+                print("Diff at (%d, %d): %d != %d" % (
+                    diff_p, diff_o, source.page_offset[diff_p, diff_o],
+                    target.page_offset[diff_p, diff_o]
+                ))
+                assert False
+
+        # If we've finished both main and aux pages, there should be no residual
+        # diffs in packed representation
+        all_done = self.out_of_work[True] and self.out_of_work[False]
+        if all_done and not np.array_equal(self.pixelmap.packed,
+                                           target_pixelmap.packed):
+            diffs = np.nonzero(
+                self.pixelmap.packed != target_pixelmap.packed)
+            print("is_aux: %s" % is_aux)
+            for i in range(len(diffs[0])):
+                diff_p = diffs[0][i]
+                diff_o = diffs[1][i]
+                print("(%d, %d): got %d want %d" % (
+                    diff_p, diff_o, self.pixelmap.packed[diff_p, diff_o],
+                    target_pixelmap.packed[diff_p, diff_o]))
+            assert False
 
         # If we run out of things to do, pad forever
         content = target.page_offset[0, 0]
