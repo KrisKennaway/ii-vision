@@ -342,15 +342,13 @@ class Bitmap:
 
     @classmethod
     @functools.lru_cache(None)
-    def edit_distances(cls, palette_id: pal.Palette) -> List[np.ndarray]:
+    def edit_distances(cls, palette_id: pal.Palette) -> np.ndarray:
         """Load edit distance matrices for masked, shifted byte values."""
 
-        data = "transcoder/data/%s_palette_%d_edit_distance.pickle.bz2" % (
-            cls.NAME,
-            palette_id.value
+        data = "transcoder/data/%s_palette_%d_edit_distance.npz" % (
+            cls.NAME, palette_id.value
         )
-        with bz2.open(data, "rb") as ed:
-            dist = pickle.load(ed)  # type: List[np.ndarray]
+        dist = np.load(data)['edit_distance']
 
         # dist is an upper-triangular matrix of edit_distance(a, b)
         # encoded as dist[(a << N) + b] = edit_distance(a, b)
@@ -363,8 +361,8 @@ class Bitmap:
                 (identity & np.uint64(2 ** cls.MASKED_BITS - 1)) <<
                 cls.MASKED_BITS)
 
-        for i in range(len(dist)):
-            dist[i][transpose] += dist[i][identity]
+        for i in range(dist.shape[0]):
+            dist[i, transpose] += dist[i, identity]
 
         return dist
 
@@ -741,6 +739,7 @@ class HGRBitmap(Bitmap):
         return double
 
     @classmethod
+    @functools.lru_cache(None)
     def to_dots(cls, masked_val: int, byte_offset: int) -> int:
         """Convert masked representation to bit sequence of display dots.
 

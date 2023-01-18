@@ -50,8 +50,7 @@ TODO: link video once it is available.
 
 ## Installation
 
-This currently requires python3.7 because some dependencies (e.g. weighted-levenshtein) don't compile with 3.9+, and 3.8
-has a [bug](https://bugs.python.org/issue44439) in object pickling.  
+This currently requires python3.7 because some dependencies (e.g. weighted-levenshtein) don't compile with 3.9+.
 
 ```
 python3.7 -m venv venv
@@ -59,23 +58,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-To generate the data files required by the transcoder:
+Before you can run the transcoder you need to generate the data files it requires:
 
 ```
 % python transcoder/make_data_tables.py
 ```
 
-This takes about 3 hours on my machine.
-
-TODO: download instructions
+This is a one-time setup.  It takes about 90 minutes on my machine.
 
 ## Release Notes
 
 ### v0.3 (17 Jan 2023)
 
 - Fixed an image quality bug in the transcoder
-- Quality of life improvements to installation process
-- Stop using LFS to store the generated data files in git, they're using up my quota
+- Documentation/quality of life improvements to installation process
+- Stop using LFS to store the generated data files in git, they're using up all my quota
 
 ### v0.2 (19 July 2019)
 
