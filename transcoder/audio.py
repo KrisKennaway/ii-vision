@@ -64,8 +64,8 @@ class Audio:
     def _normalization(self, read_bytes=1024 * 1024 * 10):
         """Read first read_bytes of audio stream and compute normalization.
 
-        We compute the 2.5th and 97.5th percentiles i.e. only 2.5% of samples
-        will clip.
+        We normalize based on the 0.5th and 99.5th percentiles, i.e. only <1% of
+        samples will clip.
 
         :param read_bytes:
         :return:
@@ -77,7 +77,7 @@ class Audio:
                 if len(raw) > read_bytes:
                     break
         a = self._decode(f, raw)
-        norm = np.max(np.abs(np.percentile(a, [2.5, 97.5])))
+        norm = np.max(np.abs(np.percentile(a, [0.5, 99.5])))
 
         return 16384. / norm
 
