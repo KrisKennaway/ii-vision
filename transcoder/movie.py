@@ -84,7 +84,14 @@ class Movie:
                             aux_memory=aux,
                             palette=self.palette
                         )
-                    else:
+                    elif self.video_mode == VideoMode.DHGR_MONO:
+                        # XXX
+                        target_pixelmap = screen.DHGRBitmap(
+                            main_memory=main,
+                            aux_memory=aux,
+                            palette=self.palette
+                        )
+                    else:  # VideoMode.HGR
                         target_pixelmap = screen.HGRBitmap(
                             main_memory=main,
                             palette=self.palette
@@ -140,7 +147,7 @@ class Movie:
             if socket_pos >= 2044:
                 # 2 op_ack address bytes + 2 payload bytes from ACK must
                 # terminate 2K stream frame
-                if self.video_mode == VideoMode.DHGR:
+                if self.video_mode in {VideoMode.DHGR, VideoMode.DHGR_MONO}:
                     # Flip-flop between MAIN and AUX banks
                     self.aux_memory_bank = not self.aux_memory_bank
 
