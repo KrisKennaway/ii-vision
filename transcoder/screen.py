@@ -184,7 +184,8 @@ class Bitmap:
         self.SCREEN_BYTES = np.uint64(len(self.BYTE_MASKS))  # type: np.uint64
 
         self.packed = np.empty(
-            shape=(32, 128), dtype=np.uint64)  # type: np.ndarray
+            shape=(32, np.uint64(256) // self.SCREEN_BYTES), dtype=np.uint64
+        )  # type: np.ndarray
         self._pack()
 
     # TODO: don't leak headers/footers across screen rows.  We should be using
@@ -213,17 +214,24 @@ class Bitmap:
         # decode the effective colours at the beginning of the 22-bit tuple
         prev_col = np.roll(body, 1, axis=1).astype(np.uint64)
         header = self._make_header(prev_col)
-        # Don't leak header across page boundaries
-        header[:, 0] = 0
+        if header.shape[1]:
+            # Don't leak header across page boundaries
+            header[:, 0] = 0
 
         # Append first 3 bits of next even byte so we can correctly
         # decode the effective colours at the end of the 22-bit tuple
         next_col = np.roll(body, -1, axis=1).astype(np.uint64)
         footer = self._make_footer(next_col)
-        # Don't leak footer across page boundaries
-        footer[:, -1] = 0
+        if footer.shape[1]:
+            # Don't leak footer across page boundaries
+            footer[:, -1] = 0
 
-        self.packed = header ^ body ^ footer
+        packed = body
+        if header.shape[1]:
+            packed ^= header
+        if footer.shape[1]:
+            packed ^= footer
+        self.packed = packed
 
     @staticmethod
     def masked_update(
@@ -262,11 +270,13 @@ class Bitmap:
         """Update packed representation of changing main/aux memory."""
 
         byte_offset = self.byte_offset(offset, is_aux)
-        packed_offset = offset // 2
+        packed_offset = int(offset // self.SCREEN_BYTES)
 
         self.packed[page, packed_offset] = self.masked_update(
             byte_offset, self.packed[page, packed_offset], value)
         self._fix_scalar_neighbours(page, packed_offset, byte_offset)
+
+        assert self.packed[page, packed_offset] < 128
 
         if is_aux:
             self.aux_memory.write(page, offset, value)
@@ -280,12 +290,15 @@ class Bitmap:
             byte_offset: int) -> None:
         """Fix up column headers/footers when updating a (page, offset)."""
 
-        if byte_offset == 0 and offset > 0:
+        if byte_offset == 0 and offset > 0 and self.HEADER_BITS:
             self.packed[page, offset - 1] = self._fix_column_left(
                 self.packed[page, offset - 1],
                 self.packed[page, offset]
             )
-        elif byte_offset == (self.SCREEN_BYTES - 1) and offset < 127:
+        elif (
+            byte_offset == (self.SCREEN_BYTES - 1) and offset < 127 and
+                self.FOOTER_BITS
+            ):
             # Need to also update the 3-bit header of the next column
             self.packed[page, offset + 1] = self._fix_column_right(
                 self.packed[page, offset + 1],
@@ -330,12 +343,12 @@ class Bitmap:
 
         # Propagate new value into neighbouring byte headers/footers if
         # necessary
-        if byte_offset == 0:
+        if byte_offset == 0 and self.HEADER_BITS:
             # Need to also update the footer of the preceding column
             shifted_left = np.roll(ary, -1, axis=1)
             self._fix_column_left(ary, shifted_left)
 
-        elif byte_offset == (self.SCREEN_BYTES - 1):
+        elif byte_offset == (self.SCREEN_BYTES - 1) and self.FOOTER_BITS:
             # Need to also update the header of the next column
             shifted_right = np.roll(ary, 1, axis=1)
             self._fix_column_right(ary, shifted_right)
@@ -429,22 +442,32 @@ class Bitmap:
             if content is not None:
                 compare_packed = self.masked_update(o, source_packed, content)
                 self._fix_array_neighbours(compare_packed, o)
+                # print("content = %s" % content)
             else:
                 compare_packed = source_packed
 
+            # print("source_packed %s" % source_packed)
+            # print("compare %s" % compare_packed)
+            # print("packed %s" % self.packed)
             # Pixels influenced by byte offset o
-            source_pixels = self.mask_and_shift_data(compare_packed, o)
-            target_pixels = self.mask_and_shift_data(self.packed, o)
+            aux_offset = 0 if is_aux else 1  # XXX
+            source_pixels = self.mask_and_shift_data(
+                compare_packed[:, aux_offset::2], o)
+            target_pixels = self.mask_and_shift_data(
+                self.packed[:, aux_offset::2], o)
 
             # Concatenate N-bit source and target into 2N-bit values
             pair = (source_pixels << self.MASKED_BITS) + target_pixels
             dist = self.edit_distances(self.palette)[o][pair].reshape(
                 pair.shape)
             dists.append(dist)
+            # print(source_pixels, target_pixels)
+            # print(dist)
+            # assert False
 
-        # Interleave even/odd columns
-        diff[:, 0::2] = dists[0]
-        diff[:, 1::2] = dists[1]
+        for i in range(len(offsets)):
+            # Interleave columns
+            diff[:, i::len(offsets)] = dists[i]
 
         return diff
 
@@ -468,28 +491,35 @@ class Bitmap:
         diff = np.ndarray((256,), dtype=np.int32)
 
         offsets = self._byte_offsets(is_aux)
+        # print(source_packed, target_packed)
+        # assert source_packed.dtype == np.uint64, source_packed.dtype
+        # assert target_packed.dtype == np.uint64, target_packed.dtype
 
         dists = []
         for o in offsets:
             if content is not None:
                 compare_packed = self.masked_update(o, source_packed, content)
+                # print(content, source_packed, compare_packed)
                 self._fix_array_neighbours(compare_packed, o)
+                # print(compare_packed)
             else:
                 compare_packed = source_packed
 
             # Pixels influenced by byte offset o
-            source_pixels = self.mask_and_shift_data(compare_packed, o)
-            target_pixels = self.mask_and_shift_data(target_packed, o)
-
+            aux_offset = 0 if is_aux else 1  # XXX
+            source_pixels = self.mask_and_shift_data(
+                compare_packed[:, aux_offset::2], o)
+            target_pixels = self.mask_and_shift_data(
+                target_packed[:, aux_offset::2], o)
             # Concatenate N-bit source and target into 2N-bit values
             pair = (source_pixels << self.MASKED_BITS) + target_pixels
             dist = self.edit_distances(self.palette)[o][pair].reshape(
                 pair.shape)
             dists.append(dist)
 
-        # Interleave even/odd columns
-        diff[0::2] = dists[0]
-        diff[1::2] = dists[1]
+        for i in range(len(offsets)):
+            # Interleave columns
+            diff[i::len(offsets)] = dists[i]
 
         return diff
 
@@ -1005,3 +1035,118 @@ class DHGRBitmap(Bitmap):
         update = (new_value & np.uint64(0x7f)) << np.uint64(
             7 * byte_offset + 3)
         return masked_value ^ update
+
+
+class DHGRMonoBitmap(Bitmap):
+    """Packed bitmap representation of DHGR mono screen memory.
+
+    Unlike the colour cases, where the display colour of a pixel is influenced
+    by the pixels to the left of it, the mono representation is trivial.
+
+    With this masked representation, we can precompute an edit distance for the
+    pixel changes resulting from all possible DHGR byte stores, see
+    make_edit_distance.py.
+
+    XXX
+    The edit distance matrix is encoded by concatenating the 13-bit source
+    and target masked values into a 26-bit pair, which indexes into the
+    edit_distance array to give the corresponding edit distance.
+    """
+
+    NAME = 'DHGR_MONO'
+
+    # Packed representation is 0 + 14 + 0 = 14 bits
+    HEADER_BITS = np.uint64(0)
+    BODY_BITS = np.uint64(7)
+    FOOTER_BITS = np.uint64(0)
+
+    # Masked representation selecting the influence of each byte offset
+    MASKED_BITS = np.uint64(7)  # 7-bit body + 0-bit header + 0-bit footer
+
+    # Masking is 1:1 with screen dots
+    MASKED_DOTS = np.uint64(7)
+
+    BYTE_MASKS = [
+        np.uint64(0b1111111),
+    ]
+
+    BYTE_SHIFTS = [np.uint64(0)]
+
+    PHASES = [0]
+
+    @staticmethod
+    def _make_header(col: IntOrArray) -> IntOrArray:
+        """Extract upper XXX bits of body for header of next column."""
+        # XXX return None
+        if isinstance(col, np.ndarray):
+            return np.zeros((col.shape[0], 0), dtype=col.dtype)
+        return 0
+
+    def _body(self) -> np.ndarray:
+        """Pack related screen bytes into an efficient representation.
+
+        For DHGR we first strip off the (unused) palette bit to produce
+        7-bit values, then interleave aux and main memory columns and pack
+        these 7-bit values into 28-bits.  This sequentially encodes 7 4-bit
+        DHGR pixels, which is the "repeating unit" of the DHGR screen, and
+        in a form that is convenient to operate on.
+
+        We also shift to make room for the 3-bit header.
+        """
+
+        # Palette bit is unused for DHGR so mask it out
+        aux = (self.aux_memory.page_offset & 0x7f).astype(np.uint8)
+        main = (self.main_memory.page_offset & 0x7f).astype(np.uint8)
+
+        body = np.empty((aux.shape[0], aux.shape[1] + main.shape[1]),
+                        dtype=np.uint8)
+        body[:, 0::2] = aux
+        body[:, 1::2] = main
+        # print(body)
+        return body
+
+    @staticmethod
+    def _make_footer(col: IntOrArray) -> IntOrArray:
+        """Extract lower XXX bits of body for footer of previous column."""
+        # XXX return None
+        if isinstance(col, np.ndarray):
+            return np.zeros((col.shape[0], 0), dtype=col.dtype)
+        return 0
+
+    @staticmethod
+    @functools.lru_cache(None)
+    def byte_offset(page_offset: int, is_aux: bool) -> int:
+        """Returns 0..3 packed byte offset for a given page_offset and is_aux"""
+        return 0
+
+    @staticmethod
+    @functools.lru_cache(None)
+    def _byte_offsets(is_aux: bool) -> Tuple[int, int]:
+        return (0,)
+
+    @classmethod
+    def to_dots(cls, masked_val: int, byte_offset: int) -> int:
+        """Convert masked representation to bit sequence of display dots.
+
+        For DHGR the 13-bit masked value is already a 13-bit dot sequence
+        so no need to transform it.
+        """
+
+        return masked_val
+
+    @staticmethod
+    def masked_update(
+            byte_offset: int,
+            old_value: IntOrArray,
+            new_value: np.uint8) -> IntOrArray:
+        """Update int/array to store new value at byte_offset in every entry.
+
+        Does not patch up headers/footers of neighbouring columns.
+        """
+
+        if isinstance(old_value, np.ndarray):
+            res = np.empty_like(old_value)
+            res.fill(new_value & np.uint64(0x7f))
+            return res
+        else:
+            return new_value & np.uint64(0x7f)

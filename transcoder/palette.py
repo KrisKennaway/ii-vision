@@ -5,7 +5,7 @@ from typing import Dict, Type
 
 import colormath.color_objects
 
-from colours import HGRColours
+from colours import HGRColours, MonoColours
 
 # Type annotation
 RGB = colormath.color_objects.sRGBColor
@@ -18,9 +18,11 @@ def rgb(r, g, b):
 class Palette(enum.Enum):
     """BMP2DHR palette numbers."""
 
+    # XXX don't use BMP2DHR palette values here
     UNKNOWN = -1
     IIGS = 0
     NTSC = 5
+    MONO = 1
 
 
 class BasePalette:
@@ -54,6 +56,15 @@ class NTSCPalette(BasePalette):
     }
 
 
+class MonoPalette(BasePalette):
+    ID = Palette.MONO
+
+    RGB = {
+        MonoColours.BLACK: rgb(0, 0, 0),
+        MonoColours.WHITE: rgb(255, 255, 255)
+    }
+
+
 class IIGSPalette(BasePalette):
     ID = Palette.IIGS
 
@@ -80,5 +91,6 @@ class IIGSPalette(BasePalette):
 
 PALETTES = {
     Palette.IIGS: IIGSPalette,
-    Palette.NTSC: NTSCPalette
+    Palette.NTSC: NTSCPalette,
+    Palette.MONO: MonoPalette
 }  # type: Dict[Palette, Type[BasePalette]]

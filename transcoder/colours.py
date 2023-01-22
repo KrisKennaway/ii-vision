@@ -71,6 +71,13 @@ class DHGRColours(NominalColours):
     WHITE = 0b1111
 
 
+class MonoColours(NominalColours):
+    """XXX """
+
+    BLACK = 0b0
+    WHITE = 0b1
+
+
 def ror(int4: int, howmany: int) -> int:
     """Rotate-right an int4 some number of times."""
     res = int4
@@ -146,4 +153,35 @@ def dots_to_nominal_colour_pixel_values(
     return tuple(p.value for p in dots_to_nominal_colour_pixels(
         num_bits, dots, colours, init_phase
     ))
+
+
+@functools.lru_cache(None)
+def dots_to_mono_pixels(
+        num_bits: int,
+        dots: int,
+        colours: Type[MonoColours],
+) -> Tuple[MonoColours]:
+    """Sequence of num_bits mono pixels.
+
+    """
+    res = []
+
+    shifted = dots
+    for i in range(num_bits):
+        colour = shifted & 0b1
+        res.append(colours(colour))
+
+        shifted >>= 1
+
+    return tuple(res)
+
+@functools.lru_cache(None)
+def dots_to_mono_pixel_values(
+        num_bits: int,
+        dots: int,
+        colours: Type[MonoColours],
+) -> Tuple[int]:
+    """"Sequence of num_bits nominal colour values via sliding 4-bit window."""
+
+    return tuple(p.value for p in dots_to_mono_pixels(num_bits, dots, colours))
 

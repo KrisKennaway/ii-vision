@@ -37,24 +37,31 @@ class Video:
         # Initialize empty screen
         self.memory_map = screen.MemoryMap(
             screen_page=1)  # type: screen.MemoryMap
-        if self.mode == mode.DHGR:
+        if self.mode in {VideoMode.DHGR, VideoMode.DHGR_MONO}:
             self.aux_memory_map = screen.MemoryMap(
                 screen_page=1)  # type: screen.MemoryMap
-
-            self.pixelmap = screen.DHGRBitmap(
-                palette=palette,
-                main_memory=self.memory_map,
-                aux_memory=self.aux_memory_map
-            )
+            if self.mode == VideoMode.DHGR:
+                self.pixelmap = screen.DHGRBitmap(
+                    palette=palette,
+                    main_memory=self.memory_map,
+                    aux_memory=self.aux_memory_map
+                )
+            else:
+                self.pixelmap = screen.DHGRMonoBitmap(
+                    palette=palette,
+                    main_memory=self.memory_map,
+                    aux_memory=self.aux_memory_map
+                )
         else:
             self.pixelmap = screen.HGRBitmap(
                 palette=palette,
                 main_memory=self.memory_map,
             )
+        # print("pix %s" % self.pixelmap.packed)
 
         # Accumulates pending edit weights across frames
         self.update_priority = np.zeros((32, 256), dtype=np.int32)
-        if self.mode == mode.DHGR:
+        if self.mode in {VideoMode.DHGR, VideoMode.DHGR_MONO}:
             self.aux_update_priority = np.zeros((32, 256), dtype=np.int32)
 
         # Indicates whether we have run out of work for the main/aux banks.
@@ -101,7 +108,7 @@ class Video:
     ) -> Iterator[Tuple[int, int, List[int]]]:
         """Transform encoded screen to sequence of change tuples."""
 
-        if self.mode == VideoMode.DHGR and is_aux:
+        if self.mode in {VideoMode.DHGR, VideoMode.DHGR_MONO} and is_aux:
             target = target_pixelmap.aux_memory
         else:
             target = target_pixelmap.main_memory
@@ -132,7 +139,7 @@ class Video:
 
             offsets = [offset]
             content = target.page_offset[page, offset]
-            if self.mode == VideoMode.DHGR:
+            if self.mode in {VideoMode.DHGR, VideoMode.DHGR_MONO}:
                 # DHGR palette bit not expected to be set
                 assert content < 0x80
 
@@ -206,44 +213,44 @@ class Video:
         # deterministic point in time when we can assert that all diffs should
         # have been resolved.
         # TODO: add flag to enable debug assertions
-        # if not np.array_equal(source.page_offset, target.page_offset):
-        #     diffs = np.nonzero(source.page_offset != target.page_offset)
-        #     for i in range(len(diffs[0])):
-        #         diff_p = diffs[0][i]
-        #         diff_o = diffs[1][i]
-        #
-        #         # For HGR, 0x00 or 0x7f may be visually equivalent to the same
-        #         # bytes with high bit set (depending on neighbours), so skip
-        #         # them
-        #         if (source.page_offset[diff_p, diff_o] & 0x7f) == 0 and \
-        #                 (target.page_offset[diff_p, diff_o] & 0x7f) == 0:
-        #             continue
-        #
-        #         if (source.page_offset[diff_p, diff_o] & 0x7f) == 0x7f and \
-        #                 (target.page_offset[diff_p, diff_o] & 0x7f) == 0x7f:
-        #             continue
-        #
-        #         print("Diff at (%d, %d): %d != %d" % (
-        #             diff_p, diff_o, source.page_offset[diff_p, diff_o],
-        #             target.page_offset[diff_p, diff_o]
-        #         ))
-        #         assert False
+        if not np.array_equal(source.page_offset, target.page_offset):
+            diffs = np.nonzero(source.page_offset != target.page_offset)
+            for i in range(len(diffs[0])):
+                diff_p = diffs[0][i]
+                diff_o = diffs[1][i]
+
+                # For HGR, 0x00 or 0x7f may be visually equivalent to the same
+                # bytes with high bit set (depending on neighbours), so skip
+                # them
+                if (source.page_offset[diff_p, diff_o] & 0x7f) == 0 and \
+                        (target.page_offset[diff_p, diff_o] & 0x7f) == 0:
+                    continue
+
+                if (source.page_offset[diff_p, diff_o] & 0x7f) == 0x7f and \
+                        (target.page_offset[diff_p, diff_o] & 0x7f) == 0x7f:
+                    continue
+
+                print("Diff at (%d, %d): %d != %d" % (
+                    diff_p, diff_o, source.page_offset[diff_p, diff_o],
+                    target.page_offset[diff_p, diff_o]
+                ))
+                assert False
         #
         # # If we've finished both main and aux pages, there should be no residual
         # # diffs in packed representation
-        # all_done = self.out_of_work[True] and self.out_of_work[False]
-        # if all_done and not np.array_equal(self.pixelmap.packed,
-        #                                    target_pixelmap.packed):
-        #     diffs = np.nonzero(
-        #         self.pixelmap.packed != target_pixelmap.packed)
-        #     print("is_aux: %s" % is_aux)
-        #     for i in range(len(diffs[0])):
-        #         diff_p = diffs[0][i]
-        #         diff_o = diffs[1][i]
-        #         print("(%d, %d): got %d want %d" % (
-        #             diff_p, diff_o, self.pixelmap.packed[diff_p, diff_o],
-        #             target_pixelmap.packed[diff_p, diff_o]))
-        #     assert False
+        all_done = self.out_of_work[True] and self.out_of_work[False]
+        if all_done and not np.array_equal(self.pixelmap.packed,
+                                           target_pixelmap.packed):
+            diffs = np.nonzero(
+                self.pixelmap.packed != target_pixelmap.packed)
+            print("is_aux: %s" % is_aux)
+            for i in range(len(diffs[0])):
+                diff_p = diffs[0][i]
+                diff_o = diffs[1][i]
+                print("(%d, %d): got %d want %d" % (
+                    diff_p, diff_o, self.pixelmap.packed[diff_p, diff_o],
+                    target_pixelmap.packed[diff_p, diff_o]))
+            assert False
 
         # If we run out of things to do, pad forever
         content = target.page_offset[0, 0]

@@ -85,8 +85,7 @@ class Movie:
                             palette=self.palette
                         )
                     elif self.video_mode == VideoMode.DHGR_MONO:
-                        # XXX
-                        target_pixelmap = screen.DHGRBitmap(
+                        target_pixelmap = screen.DHGRMonoBitmap(
                             main_memory=main,
                             aux_memory=aux,
                             palette=self.palette

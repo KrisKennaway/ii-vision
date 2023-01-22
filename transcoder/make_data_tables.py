@@ -39,7 +39,8 @@ class EditDistanceParams:
     # Smallest substitution value is ~20 from palette.diff_matrices, i.e.
     # we always prefer to transpose 2 pixels rather than substituting colours.
     # TODO: is quality really better allowing transposes?
-    transpose_costs = np.ones((128, 128), dtype=np.float64)
+    # XXX is 1 appropriate weight for mono?
+    transpose_costs = np.ones((128, 128), dtype=np.float64) * 50
 
     # These will be filled in later
     substitute_costs = np.zeros((128, 128), dtype=np.float64)
@@ -58,8 +59,8 @@ def compute_diff_matrix(pal: Type[palette.BasePalette]):
 
     Specifically CIE2000 delta values for this palette.
     """
-    dm = np.ndarray(shape=(16, 16), dtype=np.int32)
-
+    palette_size = len(pal.RGB)
+    dm = np.ndarray(shape=(palette_size, palette_size), dtype=np.int32)
     for colour1, a in pal.RGB.items():
         alab = colormath.color_conversions.convert_color(
             a, colormath.color_objects.LabColor)
@@ -78,9 +79,11 @@ def compute_substitute_costs(pal: Type[palette.BasePalette]):
 
     diff_matrix = compute_diff_matrix(pal)
 
+    palette_size = len(pal.RGB)
+
     # Penalty for changing colour
-    for i, c in enumerate(PIXEL_CHARS):
-        for j, d in enumerate(PIXEL_CHARS):
+    for i, c in enumerate(PIXEL_CHARS[:palette_size]):
+        for j, d in enumerate(PIXEL_CHARS[:palette_size]):
             cost = diff_matrix[i, j]
             edp.substitute_costs[(ord(c), ord(d))] = cost
             edp.substitute_costs[(ord(d), ord(c))] = cost
@@ -112,7 +115,7 @@ def edit_distance(
 def compute_edit_distance(
         edp: EditDistanceParams,
         bitmap_cls: Type[screen.Bitmap],
-        nominal_colours: Type[colours.NominalColours]
+        nominal_colours: Type[colours.NominalColours], is_mono: bool = False
 ) -> np.ndarray:
     """Computes edit distance matrix between all pairs of pixel strings.
 
@@ -146,12 +149,18 @@ def compute_edit_distance(
         for o, ph in enumerate(bitmap_cls.PHASES):
             # Compute this in the outer loop since it's invariant under j
             first_dots = bitmap_cls.to_dots(i, byte_offset=o)
-            first_pixels = pixel_string(
-                colours.dots_to_nominal_colour_pixel_values(
-                    num_dots, first_dots, nominal_colours,
-                    init_phase=ph)
-            )
 
+            if is_mono:
+                first_pixel_values = colours.dots_to_mono_pixel_values(
+                    num_dots, first_dots, nominal_colours)
+
+            else:
+                first_pixel_values = (
+                    colours.dots_to_nominal_colour_pixel_values(
+                        num_dots, first_dots, nominal_colours,
+                        init_phase=ph)
+                )
+            first_pixels = pixel_string(first_pixel_values)
             # Matrix is symmetrical with zero diagonal so only need to compute
             # upper triangle
             for j in range(i):
@@ -164,11 +173,19 @@ def compute_edit_distance(
                 pair = pair_base + np.uint64(j)
 
                 second_dots = bitmap_cls.to_dots(j, byte_offset=o)
-                second_pixels = pixel_string(
-                    colours.dots_to_nominal_colour_pixel_values(
-                        num_dots, second_dots, nominal_colours,
-                        init_phase=ph)
-                )
+
+                if is_mono:
+                    second_pixel_values = colours.dots_to_mono_pixel_values(
+                        num_dots, second_dots, nominal_colours)
+
+                else:
+                    second_pixel_values = (
+                        colours.dots_to_nominal_colour_pixel_values(
+                            num_dots, second_dots, nominal_colours,
+                            init_phase=ph)
+                    )
+                second_pixels = pixel_string(second_pixel_values)
+
                 edit[o, pair] = edit_distance(
                     edp, first_pixels, second_pixels, error=False)
 
@@ -183,7 +200,9 @@ def make_edit_distance(
 ):
     """Write file containing (D)HGR edit distance matrix for a palette."""
 
-    dist = compute_edit_distance(edp, bitmap_cls, nominal_colours)
+    is_mono = pal.ID == palette.Palette.MONO
+
+    dist = compute_edit_distance(edp, bitmap_cls, nominal_colours, is_mono)
     data = "transcoder/data/%s_palette_%d_edit_distance.npz" % (
         bitmap_cls.NAME, pal.ID.value)
     np.savez_compressed(data, edit_distance=dist)
@@ -192,12 +211,16 @@ def make_edit_distance(
 def main():
     for p in palette.PALETTES.values():
         print("Processing palette %s" % p)
+        # TODO: still worth using error distance matrices?
         edp = compute_substitute_costs(p)
 
-        # TODO: still worth using error distance matrices?
-
-        make_edit_distance(p, edp, screen.HGRBitmap, colours.HGRColours)
-        make_edit_distance(p, edp, screen.DHGRBitmap, colours.DHGRColours)
+        if p.ID == palette.Palette.MONO:
+            make_edit_distance(p, edp, screen.DHGRMonoBitmap,
+                               colours.MonoColours)
+        else:
+            #make_edit_distance(p, edp, screen.HGRBitmap, colours.HGRColours)
+            #make_edit_distance(p, edp, screen.DHGRBitmap, colours.DHGRColours)
+            pass
 
 
 if __name__ == "__main__":

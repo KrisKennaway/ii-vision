@@ -81,29 +81,38 @@ class FileFrameGrabber(FrameGrabber):
             self.filename, self.video_mode, self.palette)
         os.makedirs(frame_dir, exist_ok=True)
 
-        global _converter
         if self.video_mode == VideoMode.DHGR_MONO:
-            _converter = DHGRMonoFrameConverter(frame_dir)
+            converter = DHGRMonoFrameConverter(frame_dir)
         elif self.video_mode == VideoMode.DHGR:
             # XXX support palette
-            _converter = DHGRFrameConverter(frame_dir=frame_dir)
+            converter = DHGRFrameConverter(frame_dir=frame_dir)
         elif self.video_mode == VideoMode.HGR:
-            _converter = HGRFrameConverter(
+            converter = HGRFrameConverter(
                 frame_dir=frame_dir, palette_value=self.palette.value)
 
-        pool = multiprocessing.Pool(10)
-        for main, aux in pool.imap(_converter.convert, self._frame_extractor(
+        pool = multiprocessing.Pool(
+            10, initializer=init_converter, initargs=(converter,))
+        for main, aux in pool.imap(converter.convert, self._frame_extractor(
                 frame_dir), chunksize=1):
             main_map = screen.FlatMemoryMap(
                 screen_page=1, data=main).to_memory_map()
-            aux_map = screen.FlatMemoryMap(
-                screen_page=1, data=aux).to_memory_map() if aux else None
-
+            if aux is not None:
+                aux_map = screen.FlatMemoryMap(
+                    screen_page=1, data=aux).to_memory_map()
+            else:
+                aux_map = None
+            # print("main %s" % main_map.page_offset)
+            # print("aux %s" % aux_map.page_offset)
             yield main_map, aux_map
 
 
 # Used in worker pool to receive global state
 _converter = None  # type:Optional[FrameConverter]
+
+
+def init_converter(converter):
+    global _converter
+    _converter = converter
 
 
 class FrameConverter:
@@ -210,7 +219,9 @@ class DHGRMonoFrameConverter(FrameConverter):
             os.stat(dhrfile)
         except FileNotFoundError:
             subprocess.call([
-                "python", "convert.py", "dhr_mono", bmpfile, dhrfile
+                # XXX
+                "python3.10", "/Volumes/Stuff/apple2/dither/convert.py",
+                "dhr_mono", "--no-show-output", bmpfile, dhrfile
             ])
             # os.remove(bmpfile)
 
