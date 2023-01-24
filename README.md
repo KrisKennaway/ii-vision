@@ -66,6 +66,11 @@ Before you can run the transcoder you need to generate the data files it require
 
 This is a one-time setup.  It takes about 90 minutes on my machine.
 
+## Sample videos
+
+Some sample videos are available [here](https://www.dropbox.com/sh/kq2ej63smrzruwk/AADZSaqbNuTwAfnPWT6r9TJra?dl=0) for
+streaming (see `server/server.py`)
+
 ## Release Notes
 
 ### v0.3 (17 Jan 2023)
