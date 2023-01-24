@@ -40,7 +40,7 @@ This ends up streaming data at about 100KB/sec of which 56KB/sec are updates to 
 
 The video frames are actually encoded at the original frame rate (or optionally by skipping frames), prioritizing differences in the screen content, so the effective frame rate is higher than this if only a fraction of the screen is changing between frames (which is the typical case). 
 
-I'm using the excellent (though under-documented ;) [BMP2DHR](http://www.appleoldies.ca/bmp2dhr/) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
+I'm using the excellent (though under-documented ;) [BMP2DHR](https://github.com/digarok/b2d) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
 
 ### KansasFest 2019 presentation
 
