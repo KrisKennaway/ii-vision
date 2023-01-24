@@ -228,6 +228,6 @@ class DHGRMonoFrameConverter(FrameConverter):
         dhr = np.fromfile(dhrfile, dtype=np.uint8)
         aux = dhr[:8192]
         main = dhr[8192:]
-        return aux, main
+        return main, aux
 
 #
