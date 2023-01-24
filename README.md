@@ -17,6 +17,8 @@ Dedicated to the memory of [Bob Bishop](https://www.kansasfest.org/2014/11/remem
 
 Sample videos (recording of playback on Apple //gs with RGB monitor, or HDMI via VidHD)
 
+TODO: These are from older versions, for which quality was not as good.
+
 Double Hi-Res:
 - [Try getting this song out of your head](https://youtu.be/S7aNcyojoZI)
 - [Babylon 5 title credits](https://youtu.be/PadKk8n1xY8)
@@ -27,8 +29,6 @@ Hi-Res:
 Older Hi-Res videos:
 - [Paranoimia ft Max Headroom](https://youtu.be/wfdbEyP6v4o)
 - [How many of us still feel about our Apple II's](https://youtu.be/-e5LRcnQF-A)
-
-(These are from older versions, for which quality was not as good)
 
 There may be more on this [YouTube playlist](https://www.youtube.com/playlist?list=PLoAt3SC_duBiIjqK8FBoDG_31nUPB8KBM)
 
