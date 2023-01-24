@@ -39,8 +39,8 @@ class EditDistanceParams:
     # Smallest substitution value is ~20 from palette.diff_matrices, i.e.
     # we always prefer to transpose 2 pixels rather than substituting colours.
     # TODO: is quality really better allowing transposes?
-    # XXX is 1 appropriate weight for mono?
-    transpose_costs = np.ones((128, 128), dtype=np.float64) * 50
+    # XXX is this appropriate weight for mono?
+    transpose_costs = np.ones((128, 128), dtype=np.float64) * 100
 
     # These will be filled in later
     substitute_costs = np.zeros((128, 128), dtype=np.float64)
@@ -218,6 +218,7 @@ def main():
             make_edit_distance(p, edp, screen.DHGRMonoBitmap,
                                colours.MonoColours)
         else:
+            # XXX
             #make_edit_distance(p, edp, screen.HGRBitmap, colours.HGRColours)
             #make_edit_distance(p, edp, screen.DHGRBitmap, colours.DHGRColours)
             pass

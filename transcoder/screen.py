@@ -183,9 +183,11 @@ class Bitmap:
         # How many screen bytes we pack into a single scalar
         self.SCREEN_BYTES = np.uint64(len(self.BYTE_MASKS))  # type: np.uint64
 
+        # XXX * 1 for HGR
         self.packed = np.empty(
-            shape=(32, np.uint64(256) // self.SCREEN_BYTES), dtype=np.uint64
+            shape=(32, np.uint64(256 * 2) // self.SCREEN_BYTES), dtype=np.uint64
         )  # type: np.ndarray
+        # print(self.packed.shape)
         self._pack()
 
     # TODO: don't leak headers/footers across screen rows.  We should be using
@@ -270,13 +272,12 @@ class Bitmap:
         """Update packed representation of changing main/aux memory."""
 
         byte_offset = self.byte_offset(offset, is_aux)
-        packed_offset = int(offset // self.SCREEN_BYTES)
+        # XXX HGR
+        packed_offset = int(offset * 2 // self.SCREEN_BYTES)
 
         self.packed[page, packed_offset] = self.masked_update(
             byte_offset, self.packed[page, packed_offset], value)
         self._fix_scalar_neighbours(page, packed_offset, byte_offset)
-
-        assert self.packed[page, packed_offset] < 128
 
         if is_aux:
             self.aux_memory.write(page, offset, value)
@@ -450,11 +451,11 @@ class Bitmap:
             # print("compare %s" % compare_packed)
             # print("packed %s" % self.packed)
             # Pixels influenced by byte offset o
-            aux_offset = 0 if is_aux else 1  # XXX
-            source_pixels = self.mask_and_shift_data(
-                compare_packed[:, aux_offset::2], o)
-            target_pixels = self.mask_and_shift_data(
-                self.packed[:, aux_offset::2], o)
+            source_pixels = self.mask_and_shift_data(compare_packed, o)
+            target_pixels = self.mask_and_shift_data(self.packed, o)
+            # print(source_pixels.shape)
+            # print(target_pixels.shape)
+            # print(compare_packed.shape)
 
             # Concatenate N-bit source and target into 2N-bit values
             pair = (source_pixels << self.MASKED_BITS) + target_pixels
@@ -468,6 +469,7 @@ class Bitmap:
         for i in range(len(offsets)):
             # Interleave columns
             diff[:, i::len(offsets)] = dists[i]
+        # print(is_aux, diff, dists)
 
         return diff
 
@@ -506,11 +508,8 @@ class Bitmap:
                 compare_packed = source_packed
 
             # Pixels influenced by byte offset o
-            aux_offset = 0 if is_aux else 1  # XXX
-            source_pixels = self.mask_and_shift_data(
-                compare_packed[:, aux_offset::2], o)
-            target_pixels = self.mask_and_shift_data(
-                target_packed[:, aux_offset::2], o)
+            source_pixels = self.mask_and_shift_data(compare_packed, o)
+            target_pixels = self.mask_and_shift_data(target_packed, o)
             # Concatenate N-bit source and target into 2N-bit values
             pair = (source_pixels << self.MASKED_BITS) + target_pixels
             dist = self.edit_distances(self.palette)[o][pair].reshape(
@@ -1057,22 +1056,23 @@ class DHGRMonoBitmap(Bitmap):
 
     # Packed representation is 0 + 14 + 0 = 14 bits
     HEADER_BITS = np.uint64(0)
-    BODY_BITS = np.uint64(7)
+    BODY_BITS = np.uint64(14)
     FOOTER_BITS = np.uint64(0)
 
     # Masked representation selecting the influence of each byte offset
-    MASKED_BITS = np.uint64(7)  # 7-bit body + 0-bit header + 0-bit footer
+    MASKED_BITS = np.uint64(14)  # 7-bit body + 0-bit header + 0-bit footer
 
     # Masking is 1:1 with screen dots
-    MASKED_DOTS = np.uint64(7)
+    MASKED_DOTS = np.uint64(14)
 
     BYTE_MASKS = [
-        np.uint64(0b1111111),
+        np.uint64(0b00000001111111),
+        np.uint64(0b11111110000000),
     ]
 
-    BYTE_SHIFTS = [np.uint64(0)]
+    BYTE_SHIFTS = [np.uint64(0), np.uint64(7)]
 
-    PHASES = [0]
+    PHASES = [0, 0]
 
     @staticmethod
     def _make_header(col: IntOrArray) -> IntOrArray:
@@ -1095,15 +1095,10 @@ class DHGRMonoBitmap(Bitmap):
         """
 
         # Palette bit is unused for DHGR so mask it out
-        aux = (self.aux_memory.page_offset & 0x7f).astype(np.uint8)
-        main = (self.main_memory.page_offset & 0x7f).astype(np.uint8)
+        aux = (self.aux_memory.page_offset & 0x7f).astype(np.uint64)
+        main = (self.main_memory.page_offset & 0x7f).astype(np.uint64)
 
-        body = np.empty((aux.shape[0], aux.shape[1] + main.shape[1]),
-                        dtype=np.uint8)
-        body[:, 0::2] = aux
-        body[:, 1::2] = main
-        # print(body)
-        return body
+        return aux ^ (main << 7)
 
     @staticmethod
     def _make_footer(col: IntOrArray) -> IntOrArray:
@@ -1117,12 +1112,16 @@ class DHGRMonoBitmap(Bitmap):
     @functools.lru_cache(None)
     def byte_offset(page_offset: int, is_aux: bool) -> int:
         """Returns 0..3 packed byte offset for a given page_offset and is_aux"""
-        return 0
+        if is_aux:
+            return 0
+        return 1
 
     @staticmethod
     @functools.lru_cache(None)
     def _byte_offsets(is_aux: bool) -> Tuple[int, int]:
-        return (0,)
+        if is_aux:
+            return (0,)
+        return (1,)
 
     @classmethod
     def to_dots(cls, masked_val: int, byte_offset: int) -> int:
@@ -1143,10 +1142,10 @@ class DHGRMonoBitmap(Bitmap):
 
         Does not patch up headers/footers of neighbouring columns.
         """
+        # Mask out 7-bit value where update will go
+        masked_value = old_value & (
+            ~np.uint64(0x7f << (7 * byte_offset)))
 
-        if isinstance(old_value, np.ndarray):
-            res = np.empty_like(old_value)
-            res.fill(new_value & np.uint64(0x7f))
-            return res
-        else:
-            return new_value & np.uint64(0x7f)
+        update = (new_value & np.uint64(0x7f)) << np.uint64(
+            7 * byte_offset)
+        return masked_value ^ update

@@ -168,7 +168,7 @@ class Video:
                     continue
 
                 byte_offset = target_pixelmap.byte_offset(o, is_aux)
-                old_packed = target_pixelmap.packed[page, o // 2]
+                old_packed = target_pixelmap.packed[page, o // 1]  # XXX 2
 
                 p = target_pixelmap.byte_pair_difference(
                     byte_offset, old_packed, content)
@@ -230,14 +230,15 @@ class Video:
                         (target.page_offset[diff_p, diff_o] & 0x7f) == 0x7f:
                     continue
 
-                print("Diff at (%d, %d): %d != %d" % (
+                print("Diff at %s (%d, %d): %d != %d" % (
+                    "aux" if is_aux else "main",
                     diff_p, diff_o, source.page_offset[diff_p, diff_o],
                     target.page_offset[diff_p, diff_o]
                 ))
                 assert False
-        #
-        # # If we've finished both main and aux pages, there should be no residual
-        # # diffs in packed representation
+
+        # If we've finished both main and aux pages, there should be no residual
+        # diffs in packed representation
         all_done = self.out_of_work[True] and self.out_of_work[False]
         if all_done and not np.array_equal(self.pixelmap.packed,
                                            target_pixelmap.packed):
