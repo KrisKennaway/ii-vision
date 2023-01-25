@@ -1,6 +1,5 @@
-import bz2
 import functools
-import pickle
+import os
 import sys
 from typing import Iterable, Type
 
@@ -17,7 +16,7 @@ import screen
 
 
 PIXEL_CHARS = "0123456789ABCDEF"
-
+DATA_DIR = "transcoder/data"
 
 def pixel_char(i: int) -> str:
     return PIXEL_CHARS[i]
@@ -184,12 +183,17 @@ def make_edit_distance(
     """Write file containing (D)HGR edit distance matrix for a palette."""
 
     dist = compute_edit_distance(edp, bitmap_cls, nominal_colours)
-    data = "transcoder/data/%s_palette_%d_edit_distance.npz" % (
-        bitmap_cls.NAME, pal.ID.value)
+    data = "%s/%s_palette_%d_edit_distance.npz" % (
+        DATA_DIR, bitmap_cls.NAME, pal.ID.value)
     np.savez_compressed(data, edit_distance=dist)
 
 
 def main():
+    try:
+        os.mkdir(DATA_DIR, mode=0o755)
+    except FileExistsError:
+        pass
+
     for p in palette.PALETTES.values():
         print("Processing palette %s" % p)
         edp = compute_substitute_costs(p)
