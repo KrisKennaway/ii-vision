@@ -268,6 +268,11 @@ class Bitmap:
             byte_offset, self.packed[page, packed_offset], value)
         self._fix_scalar_neighbours(page, packed_offset, byte_offset)
 
+        if is_aux:
+            self.aux_memory.write(page, offset, value)
+        else:
+            self.main_memory.write(page, offset, value)
+
     def _fix_scalar_neighbours(
             self,
             page: int,
@@ -337,15 +342,13 @@ class Bitmap:
 
     @classmethod
     @functools.lru_cache(None)
-    def edit_distances(cls, palette_id: pal.Palette) -> List[np.ndarray]:
+    def edit_distances(cls, palette_id: pal.Palette) -> np.ndarray:
         """Load edit distance matrices for masked, shifted byte values."""
 
-        data = "transcoder/data/%s_palette_%d_edit_distance.pickle.bz2" % (
-            cls.NAME,
-            palette_id.value
+        data = "transcoder/data/%s_palette_%d_edit_distance.npz" % (
+            cls.NAME, palette_id.value
         )
-        with bz2.open(data, "rb") as ed:
-            dist = pickle.load(ed)  # type: List[np.ndarray]
+        dist = np.load(data)['edit_distance']
 
         # dist is an upper-triangular matrix of edit_distance(a, b)
         # encoded as dist[(a << N) + b] = edit_distance(a, b)
@@ -358,8 +361,8 @@ class Bitmap:
                 (identity & np.uint64(2 ** cls.MASKED_BITS - 1)) <<
                 cls.MASKED_BITS)
 
-        for i in range(len(dist)):
-            dist[i][transpose] += dist[i][identity]
+        for i in range(dist.shape[0]):
+            dist[i, transpose] += dist[i, identity]
 
         return dist
 
@@ -445,6 +448,51 @@ class Bitmap:
 
         return diff
 
+    # TODO: combine with _diff_weights
+    # TODO: unit test
+    def _diff_weights_page(
+            self,
+            source_packed: np.ndarray,
+            target_packed: np.ndarray,
+            is_aux: bool,
+            content: np.uint8 = None
+    ) -> np.ndarray:
+        """Computes edit distance matrix from source_packed to self.packed
+
+        If content is set, the distance will be computed as if this value
+        was stored into each offset position of source_packed, i.e. to
+        allow evaluating which offsets (if any) should be chosen for storing
+        this content byte.
+        """
+
+        diff = np.ndarray((256,), dtype=np.int32)
+
+        offsets = self._byte_offsets(is_aux)
+
+        dists = []
+        for o in offsets:
+            if content is not None:
+                compare_packed = self.masked_update(o, source_packed, content)
+                self._fix_array_neighbours(compare_packed, o)
+            else:
+                compare_packed = source_packed
+
+            # Pixels influenced by byte offset o
+            source_pixels = self.mask_and_shift_data(compare_packed, o)
+            target_pixels = self.mask_and_shift_data(target_packed, o)
+
+            # Concatenate N-bit source and target into 2N-bit values
+            pair = (source_pixels << self.MASKED_BITS) + target_pixels
+            dist = self.edit_distances(self.palette)[o][pair].reshape(
+                pair.shape)
+            dists.append(dist)
+
+        # Interleave even/odd columns
+        diff[0::2] = dists[0]
+        diff[1::2] = dists[1]
+
+        return diff
+
     def _check_consistency(self):
         """Sanity check that headers and footers are consistent."""
 
@@ -474,8 +522,9 @@ class Bitmap:
             assert ok
 
     # TODO: unit tests
-    def compute_delta(
+    def compute_delta_page(
             self,
+            page: int,
             content: int,
             diff_weights: np.ndarray,
             is_aux: bool
@@ -490,10 +539,12 @@ class Bitmap:
         """
         # TODO: use error edit distance?
 
-        new_diff = self._diff_weights(self.packed, is_aux, content)
+        packed_page = self.packed[page, :].reshape(1, -1)
 
-        # TODO: try different weightings
-        return (new_diff * 5) - diff_weights
+        new_diff = self._diff_weights_page(
+            packed_page, packed_page, is_aux, content)
+
+        return new_diff - diff_weights
 
 
 class HGRBitmap(Bitmap):
@@ -688,6 +739,7 @@ class HGRBitmap(Bitmap):
         return double
 
     @classmethod
+    @functools.lru_cache(None)
     def to_dots(cls, masked_val: int, byte_offset: int) -> int:
         """Convert masked representation to bit sequence of display dots.
 

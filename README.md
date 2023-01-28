@@ -1,4 +1,4 @@
-# ]\[-Vision v0.2
+# ]\[-Vision v0.3
 
 Streaming video and audio for the Apple II.
 
@@ -6,9 +6,9 @@ Streaming video and audio for the Apple II.
 Apple II hardware.
 
 Requires:
-- 64K 6502 Apple II machine (only tested on //gs so far, but should work on older systems)
+- 64K 6502 Apple II machine (tested on //gs and //e but should also work on ]\[/]\[+)
 - [Uthernet II](http://a2retrosystems.com/products.htm) ethernet card
-  - AFAIK no emulators support this hardware so you'll need to run it on a real machine to see it in action
+  - AppleWin ([Windows](https://github.com/AppleWin/AppleWin) and [Linux](https://github.com/audetto/AppleWin)) and [Ample](https://github.com/ksherlock/ample) (Mac) emulate the Uthernet II.  ]\[-Vision has been confirmed to work with Ample.
 
 Dedicated to the memory of [Bob Bishop](https://www.kansasfest.org/2014/11/remembering-bob-bishop/), early pioneer of Apple II
 [video](https://www.youtube.com/watch?v=RiWE-aO-cyU) and [audio](http://www.faddensoftware.com/appletalker.png).
@@ -16,6 +16,8 @@ Dedicated to the memory of [Bob Bishop](https://www.kansasfest.org/2014/11/remem
 ## In action
 
 Sample videos (recording of playback on Apple //gs with RGB monitor, or HDMI via VidHD)
+
+TODO: These are from older versions, for which quality was not as good.
 
 Double Hi-Res:
 - [Try getting this song out of your head](https://youtu.be/S7aNcyojoZI)
@@ -28,8 +30,6 @@ Older Hi-Res videos:
 - [Paranoimia ft Max Headroom](https://youtu.be/wfdbEyP6v4o)
 - [How many of us still feel about our Apple II's](https://youtu.be/-e5LRcnQF-A)
 
-(These are from older versions, for which quality was not as good)
-
 There may be more on this [YouTube playlist](https://www.youtube.com/playlist?list=PLoAt3SC_duBiIjqK8FBoDG_31nUPB8KBM)
 
 ## Details
@@ -40,7 +40,7 @@ This ends up streaming data at about 100KB/sec of which 56KB/sec are updates to 
 
 The video frames are actually encoded at the original frame rate (or optionally by skipping frames), prioritizing differences in the screen content, so the effective frame rate is higher than this if only a fraction of the screen is changing between frames (which is the typical case). 
 
-I'm using the excellent (though under-documented ;) [BMP2DHR](http://www.appleoldies.ca/bmp2dhr/) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
+I'm using the excellent (though under-documented ;) [BMP2DHR](https://github.com/digarok/b2d) to encode the input video stream into a sequence of memory maps, then post-processing the frame deltas to prioritize the screen bytes to stream in order to approximate these deltas as closely as possible within the timing budget. 
 
 ### KansasFest 2019 presentation
 
@@ -50,26 +50,34 @@ TODO: link video once it is available.
 
 ## Installation
 
-This currently requires python3.7 because some dependencies (e.g. weighted-levenshtein) don't compile with 3.9+, and 3.8
-has a [bug](https://bugs.python.org/issue44439) in object pickling.  
+This currently requires python3.8 because some dependencies (e.g. weighted-levenshtein) don't compile with 3.9+.
 
 ```
-python3.7 -m venv venv
+python3.8 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-To generate the data files required by the transcoder:
+Before you can run the transcoder you need to generate the data files it requires:
 
 ```
 % python transcoder/make_data_tables.py
 ```
 
-This takes about 3 hours on my machine.
+This is a one-time setup.  It takes about 90 minutes on my machine.
 
-TODO: download instructions
+## Sample videos
+
+Some sample videos are available [here](https://www.dropbox.com/sh/kq2ej63smrzruwk/AADZSaqbNuTwAfnPWT6r9TJra?dl=0) for
+streaming (see `server/server.py`)
 
 ## Release Notes
+
+### v0.3 (17 Jan 2023)
+
+- Fixed an image quality bug in the transcoder
+- Documentation/quality of life improvements to installation process
+- Stop using LFS to store the generated data files in git, they're using up all my quota
 
 ### v0.2 (19 July 2019)
 

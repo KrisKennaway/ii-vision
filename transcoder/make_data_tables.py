@@ -1,6 +1,5 @@
-import bz2
 import functools
-import pickle
+import os
 import sys
 from typing import Iterable, Type
 
@@ -17,7 +16,7 @@ import screen
 
 
 PIXEL_CHARS = "0123456789ABCDEF"
-
+DATA_DIR = "transcoder/data"
 
 def pixel_char(i: int) -> str:
     return PIXEL_CHARS[i]
@@ -39,7 +38,7 @@ class EditDistanceParams:
     # Smallest substitution value is ~20 from palette.diff_matrices, i.e.
     # we always prefer to transpose 2 pixels rather than substituting colours.
     # TODO: is quality really better allowing transposes?
-    transpose_costs = np.ones((128, 128), dtype=np.float64) * 100000  # 10
+    transpose_costs = np.ones((128, 128), dtype=np.float64)
 
     # These will be filled in later
     substitute_costs = np.zeros((128, 128), dtype=np.float64)
@@ -113,7 +112,7 @@ def compute_edit_distance(
         edp: EditDistanceParams,
         bitmap_cls: Type[screen.Bitmap],
         nominal_colours: Type[colours.NominalColours]
-):
+) -> np.ndarray:
     """Computes edit distance matrix between all pairs of pixel strings.
 
     Enumerates all possible values of the masked bit representation from
@@ -131,44 +130,45 @@ def compute_edit_distance(
 
     bitrange = np.uint64(2 ** bits)
 
-    edit = []
-    for _ in range(len(bitmap_cls.BYTE_MASKS)):
-        edit.append(
-            np.zeros(shape=np.uint64(bitrange * bitrange), dtype=np.uint16))
+    edit = np.zeros(
+        shape=(len(bitmap_cls.BYTE_MASKS), np.uint64(bitrange * bitrange)),
+        dtype=np.uint16)
 
-    # Matrix is symmetrical with zero diagonal so only need to compute upper
-    # triangle
-    bar = ProgressBar((bitrange * (bitrange - 1)) / 2, max_width=80)
+    bar = ProgressBar(
+        bitrange * (bitrange - 1) / 2 * len(bitmap_cls.PHASES), max_width=80)
 
     num_dots = bitmap_cls.MASKED_DOTS
 
     cnt = 0
     for i in range(np.uint64(bitrange)):
-        for j in range(i):
-            cnt += 1
+        pair_base = np.uint64(i) << bits
+        for o, ph in enumerate(bitmap_cls.PHASES):
+            # Compute this in the outer loop since it's invariant under j
+            first_dots = bitmap_cls.to_dots(i, byte_offset=o)
+            first_pixels = pixel_string(
+                colours.dots_to_nominal_colour_pixel_values(
+                    num_dots, first_dots, nominal_colours,
+                    init_phase=ph)
+            )
 
-            if cnt % 10000 == 0:
-                bar.numerator = cnt
-                print(bar, end='\r')
-                sys.stdout.flush()
+            # Matrix is symmetrical with zero diagonal so only need to compute
+            # upper triangle
+            for j in range(i):
+                cnt += 1
+                if cnt % 100000 == 0:
+                    bar.numerator = cnt
+                    print(bar, end='\r')
+                    sys.stdout.flush()
 
-            pair = (np.uint64(i) << bits) + np.uint64(j)
+                pair = pair_base + np.uint64(j)
 
-            for o, ph in enumerate(bitmap_cls.PHASES):
-                first_dots = bitmap_cls.to_dots(i, byte_offset=o)
                 second_dots = bitmap_cls.to_dots(j, byte_offset=o)
-
-                first_pixels = pixel_string(
-                    colours.dots_to_nominal_colour_pixel_values(
-                        num_dots, first_dots, nominal_colours,
-                        init_phase=ph)
-                )
                 second_pixels = pixel_string(
                     colours.dots_to_nominal_colour_pixel_values(
                         num_dots, second_dots, nominal_colours,
                         init_phase=ph)
                 )
-                edit[o][pair] = edit_distance(
+                edit[o, pair] = edit_distance(
                     edp, first_pixels, second_pixels, error=False)
 
     return edit
@@ -183,13 +183,17 @@ def make_edit_distance(
     """Write file containing (D)HGR edit distance matrix for a palette."""
 
     dist = compute_edit_distance(edp, bitmap_cls, nominal_colours)
-    data = "transcoder/data/%s_palette_%d_edit_distance.pickle.bz2" % (
-        bitmap_cls.NAME, pal.ID.value)
-    with bz2.open(data, "wb", compresslevel=9) as out:
-        pickle.dump(dist, out, protocol=pickle.HIGHEST_PROTOCOL)
+    data = "%s/%s_palette_%d_edit_distance.npz" % (
+        DATA_DIR, bitmap_cls.NAME, pal.ID.value)
+    np.savez_compressed(data, edit_distance=dist)
 
 
 def main():
+    try:
+        os.mkdir(DATA_DIR, mode=0o755)
+    except FileExistsError:
+        pass
+
     for p in palette.PALETTES.values():
         print("Processing palette %s" % p)
         edp = compute_substitute_costs(p)
