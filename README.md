@@ -6,9 +6,9 @@ Streaming video and audio for the Apple II.
 Apple II hardware.
 
 Requires:
-- 64K 6502 Apple II machine (only tested on //gs so far, but should work on older systems)
+- 64K 6502 Apple II machine (tested on //gs and //e but should also work on ]\[/]\[+)
 - [Uthernet II](http://a2retrosystems.com/products.htm) ethernet card
-  - AFAIK no emulators support this hardware so you'll need to run it on a real machine to see it in action
+  - AppleWin ([Windows](https://github.com/AppleWin/AppleWin) and [Linux](https://github.com/audetto/AppleWin)) and [Ample](https://github.com/ksherlock/ample) (Mac) emulate the Uthernet II.  ]\[-Vision has been confirmed to work with Ample.
 
 Dedicated to the memory of [Bob Bishop](https://www.kansasfest.org/2014/11/remembering-bob-bishop/), early pioneer of Apple II
 [video](https://www.youtube.com/watch?v=RiWE-aO-cyU) and [audio](http://www.faddensoftware.com/appletalker.png).
