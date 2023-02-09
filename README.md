@@ -50,10 +50,10 @@ TODO: link video once it is available.
 
 ## Installation
 
-This currently requires python3.8 because some dependencies (e.g. weighted-levenshtein) don't compile with 3.9+.
+This currently requires python3.10 because the llvmlite dependency doesn't compile with 3.11.  This is tracked in https://github.com/numba/numba/issues/8304
 
 ```
-python3.8 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
